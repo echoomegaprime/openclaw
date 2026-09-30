@@ -4349,9 +4349,9 @@ describe("gateway send mirroring", () => {
 
     expect(firstRespondCall(respond)[0]).toBe(true);
     const actionCall = lastDispatchChannelMessageActionCall();
-    expect(actionCall?.mediaLocalRoots).toContain(TEST_AGENT_WORKSPACE);
+    expect(actionCall?.mediaLocalRoots).toContain(path.resolve(TEST_AGENT_WORKSPACE));
     expect(actionCall?.mediaAccess).toMatchObject({
-      localRoots: expect.arrayContaining([TEST_AGENT_WORKSPACE]),
+      localRoots: expect.arrayContaining([path.resolve(TEST_AGENT_WORKSPACE)]),
       workspaceDir: TEST_AGENT_WORKSPACE,
     });
     expect(actionCall?.mediaAccess.localRoots).toBe(actionCall?.mediaLocalRoots);
@@ -4377,7 +4377,7 @@ describe("gateway send mirroring", () => {
     expect(firstRespondCall(respond)[0]).toBe(true);
     const actionCall = lastDispatchChannelMessageActionCall();
     expect(actionCall?.mediaAccess).toMatchObject({
-      localRoots: expect.arrayContaining([TEST_AGENT_WORKSPACE]),
+      localRoots: expect.arrayContaining([path.resolve(TEST_AGENT_WORKSPACE)]),
       workspaceDir: TEST_AGENT_WORKSPACE,
     });
     expect(actionCall?.mediaAccess.localRoots).toBe(actionCall?.mediaLocalRoots);

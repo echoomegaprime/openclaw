@@ -1,3 +1,4 @@
+import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResult } from "../../agents/tools/common.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
@@ -32,7 +33,13 @@ function fixture(action = "guild-media-filter-set-all-members") {
       id: "discord",
       config: { resolveAccount: () => ({ enabled: true }), isConfigured: () => true },
     }),
-    actions: { supportsAction: () => true, handleAction: async () => jsonResult({ ok: true }) },
+    actions: {
+      describeMessageTool: () => ({
+        actions: ["guild-media-filter-set-all-members", "channel-info"],
+      }),
+      supportsAction: () => true,
+      handleAction: async () => jsonResult({ ok: true }),
+    },
   };
   setActivePluginRegistry(createTestRegistry([{ pluginId: "discord", source: "fixture", plugin }]));
   const context = {
@@ -95,9 +102,11 @@ describe("message.action fixed control operation", () => {
     });
     await f.invoke(invocation);
     expect(mocks.prepare).toHaveBeenCalledTimes(1);
-    expect(mocks.prepare.mock.calls[0][0].invocation).toBe(invocation);
-    expect(mocks.dispatch.mock.calls[0][0].controlOperation).toBe(f.prepared.controlOperation);
-    expect(mocks.dispatch.mock.calls[0][0]).not.toHaveProperty("invocation");
+    const prepareCall = expectDefined(mocks.prepare.mock.calls[0], "control preparation call");
+    const dispatchCall = expectDefined(mocks.dispatch.mock.calls[0], "control dispatch call");
+    expect(prepareCall[0].invocation).toBe(invocation);
+    expect(dispatchCall[0].controlOperation).toBe(f.prepared.controlOperation);
+    expect(dispatchCall[0]).not.toHaveProperty("invocation");
     expect(f.prepared.close).toHaveBeenCalledTimes(1);
     expect(invocation.respond).toHaveBeenCalledWith(
       true,

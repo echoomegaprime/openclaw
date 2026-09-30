@@ -3,13 +3,17 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { deferSqlitePostCommitPublication } from "../infra/sqlite-post-commit.js";
-import type { SqliteWorkerStore } from "../infra/sqlite-worker-store.js";
+import {
+  createSqliteWorkerWriteAdmission,
+  type SqliteWorkerStore,
+} from "../infra/sqlite-worker-store.js";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db-contract.js";
 import {
   openOpenClawStateDatabase,
   runOpenClawStateWriteTransaction,
 } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
+import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { runOpenClawStateWorkerOperation } from "../state/openclaw-state-worker-store.js";
 import { cronStoreKey } from "./store/key.js";
 import { restoreCronLoadError } from "./store/load-error.js";
@@ -19,11 +23,7 @@ import {
   deleteCronQuarantinedJobsFromDatabase,
   saveCronQuarantinedJobs,
 } from "./store/quarantine.js";
-import {
-  assertCronStoreCanPersist,
-  deleteStaleCronJobFamilyRows,
-  readCronJobsFingerprint,
-} from "./store/row-codec.js";
+import { assertCronStoreCanPersist, readCronJobsFingerprint } from "./store/row-codec.js";
 import type { CronJobFamilyIdentity } from "./store/row-codec.js";
 import { CronJobsStoreChangedError, restoreCronSaveError } from "./store/save-error.js";
 import type {
@@ -124,15 +124,28 @@ export function assertCronJobsStoreUnchanged(
 }
 
 /** Removes an owned declarative job family left under obsolete absolute store keys. */
-export function removeStaleCronJobFamilyRows(
+export async function removeStaleCronJobFamilyRows(
   storePath: string,
   family: CronJobFamilyIdentity,
-): number {
-  const activeStoreKey = cronStoreKey(path.resolve(storePath));
-  return runOpenClawStateWriteTransaction(
-    ({ db }) => deleteStaleCronJobFamilyRows(db, activeStoreKey, family),
-    {},
-    { operationLabel: "cron.job-family-adoption" },
+  opts?: { context?: OpenClawStateWorkerContext; assertCurrent?: () => void },
+): Promise<number> {
+  const context = opts?.context ?? captureOpenClawStateWorkerContext();
+  const input = { storeKey: cronStoreKey(path.resolve(storePath)), family: { ...family } };
+  const assertCurrent = () => {
+    context.admission.assertCurrent();
+    opts?.assertCurrent?.();
+  };
+  // Retain the existing owner through both admission grants and native settlement.
+  // A failed reply is never a reason to repeat the deletion.
+  return runOpenClawStateWorkerOperation(
+    context,
+    (scope) => scope.execute({ type: "cron.removeStaleFamily", input }),
+    {
+      assertCurrent,
+      createAdmission: createSqliteWorkerWriteAdmission(assertCurrent, [
+        context.admission.databasePath,
+      ]),
+    },
   );
 }
 

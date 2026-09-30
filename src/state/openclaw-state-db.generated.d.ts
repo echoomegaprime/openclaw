@@ -197,6 +197,24 @@ export interface CaptureSessions {
   started_at: number;
 }
 
+export interface ChannelControlOperations {
+  attempt_id: string;
+  cancel_requested: Generated<number>;
+  created_at_ms: number;
+  execution_json: string;
+  held: number;
+  namespace: string;
+  observation_json: string | null;
+  operation_id: string;
+  phase: string;
+  request_key: string;
+  resource_key: string;
+  result_json: string | null;
+  stable_digest: string;
+  stable_json: string;
+  updated_at_ms: number;
+}
+
 export interface ChannelIngressEvents {
   account_id: string;
   attempts: Generated<number>;
@@ -1788,6 +1806,7 @@ export interface DB {
   capture_blobs: CaptureBlobs;
   capture_events: CaptureEvents;
   capture_sessions: CaptureSessions;
+  channel_control_operations: ChannelControlOperations;
   channel_ingress_events: ChannelIngressEvents;
   channel_pairing_allow_entries: ChannelPairingAllowEntries;
   channel_pairing_requests: ChannelPairingRequests;

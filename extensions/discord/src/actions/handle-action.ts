@@ -79,6 +79,7 @@ type DiscordMessageActionContext = Pick<
   | "reply"
   | "progressSnapshot"
   | "assertDirectAdapterHandoff"
+  | "controlOperation"
 >;
 
 export async function handleDiscordMessageAction(

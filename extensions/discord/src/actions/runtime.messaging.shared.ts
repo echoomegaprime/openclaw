@@ -30,6 +30,9 @@ type ConversationReadInvocationOrigin = NonNullable<
 >;
 
 export type DiscordMessagingActionOptions = {
+  controlOperation?: ChannelMessageActionContext["controlOperation"];
+  /** Copied only from the host's matching Discord requester context, never action params. */
+  controlRequesterSenderId?: string;
   reply?: ChannelMessageActionContext["reply"];
   progressSnapshot?: ChannelMessageActionContext["progressSnapshot"];
   mediaAccess?: ChannelMessageActionContext["mediaAccess"];

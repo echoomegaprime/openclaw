@@ -321,7 +321,56 @@ The result contains only `accountId`, `botId`, `guildId`, and
 (disabled), `1` (members without roles), and `2` (all members).
 The action reports the measured setting; it does not test classifier accuracy
 or age-restricted-channel coverage. It changes no media filter, text filter,
-channel setting, or permissions. There is no setter command.
+channel setting, or permissions.
+
+## Discord guild media-filter control
+
+```bash
+openclaw message guild media-filter set-all-members --channel discord --account default \
+  --guild-id 111111111111111111 --expected-bot-id 222222222222222222 \
+  --expected-current 0 --idempotency-key moderation-change-001 --json
+```
+
+This fixed mutation requires an existing authorized administrator connection to
+the Gateway and the explicit
+[write opt-in](/channels/discord/access-control#set-the-media-filter-to-all-members).
+The CLI requires the account, guild, bot, expected numeric value, and durable
+key. It requests the existing administrator scope for this operation; the server
+still validates the caller's actual grant. An access denial does not cause an
+alternate-identity attempt or broader retry.
+
+Preserve the returned operation ID and key. The durable result distinguishes
+`not_entered`, `rejected`, `conflict`, `noop`, `verified_updated`, and `unknown`.
+A pre-read mismatch is `conflict`; an already-matching value of `2` is `noop`.
+An uncertain PATCH remains held. Repeating the same key returns its existing
+receipt, never another PATCH, and a new key cannot bypass a held guild field.
+
+```bash
+openclaw message guild media-filter receipt --channel discord --account default \
+  --guild-id 111111111111111111 --expected-bot-id 222222222222222222 \
+  --operation-id <retained-operation-id> --json
+
+openclaw message guild media-filter reconcile --channel discord --account default \
+  --guild-id 111111111111111111 --expected-bot-id 222222222222222222 \
+  --operation-id <retained-operation-id> --json
+
+openclaw message guild media-filter cancel --channel discord --account default \
+  --guild-id 111111111111111111 --expected-bot-id 222222222222222222 \
+  --operation-id <retained-operation-id> --json
+```
+
+These commands use the current principal's receipt namespace and exact target
+binding. `receipt` reads the retained record. `reconcile` records a current GET
+observation without changing the original outcome or clearing a hold. `cancel`
+records cancellation intent; it cannot undo a handed-off PATCH. All three may
+be used with the write opt-in disabled, subject to the existing read binding and
+current authority. None posts a Discord message or changes profanity filtering.
+
+`atomicCas: false` describes the platform race: another guild administrator may
+write between the initial read and the update. Readback confirms the observed
+setting, not classifier perfection or all age-restricted-channel coverage.
+Follow the [restored-history activation limits](/channels/discord/access-control#restored-or-uncertain-state-history)
+before any restore, clone, replacement, or rollback.
 
 ## Related
 

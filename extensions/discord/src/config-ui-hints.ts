@@ -42,12 +42,12 @@ export const discordChannelConfigUiHints = {
     help: "Post one brief, room-specific introduction when the bot joins an allowed Discord guild (default: true). Account settings override the channel-wide setting.",
   },
   "actions.guildMediaFilter": {
-    label: "Discord Guild Media Filter Read",
-    help: "Enable read-only guild media-filter inspection (default: false). Requires an exact account, bot, and guild binding; grants no write or guild access.",
+    label: "Discord Guild Media Filter Controls",
+    help: "Enable media-filter inspection and operation receipts (default: false). Requires an exact account, bot, and guild binding. Fixed all-members writes require their separate opt-in and current host authorization.",
   },
   guildMediaFilter: {
-    label: "Discord Guild Media Filter Read Binding",
-    help: "Trusted account/bot/guild binding for optional read-only inspection. Existing guild read policies and management permissions still apply.",
+    label: "Discord Guild Media Filter Binding",
+    help: "Trusted account/bot/guild binding for media-filter inspection and controlled all-members writes. Existing guild policies and management permissions apply.",
   },
   "guildMediaFilter.accountId": {
     label: "Media Filter Account ID",
@@ -59,7 +59,11 @@ export const discordChannelConfigUiHints = {
   },
   "guildMediaFilter.guildIds": {
     label: "Media Filter Guild IDs",
-    help: "Exact numeric guild IDs eligible for read-only inspection. Wildcards are not supported.",
+    help: "Exact numeric guild IDs eligible for inspection and separately enabled all-members writes. Wildcards are not supported.",
+  },
+  "guildMediaFilter.allowSetAllMembers": {
+    label: "Allow All-Members Media Filter Writes",
+    help: "Enable only the fixed all-members media-filter operation (default: false). Requires the current host operation capability and bot/requester management checks. Receipt inspection remains available when disabled.",
   },
   proxy: {
     label: "Discord Proxy URL",

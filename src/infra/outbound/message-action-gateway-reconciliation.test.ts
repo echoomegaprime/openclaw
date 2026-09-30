@@ -24,6 +24,60 @@ describe("runMessageAction plugin dispatch", () => {
   });
   describe("alias-based plugin action dispatch", () => {
     useActionHubPluginFixture();
+    it.each(["receipt", "rejection"] as const)(
+      "preserves a fixed control %s without message mirroring or a repeated gateway call",
+      async (outcome) => {
+        const action = "guild-media-filter-set-all-members";
+        setTestPlugin(
+          createGatewayActionPlugin({
+            pluginId: "discord",
+            label: "Discord",
+            blurb: "Fixed control routing fixture",
+            actions: [action],
+            handleAction: vi.fn(async () => jsonResult({ ok: true, local: true })),
+          }),
+          "discord",
+        );
+        const receipt = { ok: true, operationId: "retained-operation", atomicCas: false };
+        const failure = new Error("Original control rejection");
+        mocks.beginTerminalSourceReplyDelivery.mockRejectedValue(
+          new Error("Unrelated mirror failed"),
+        );
+        if (outcome === "receipt") {
+          mocks.callGatewayLeastPrivilege.mockResolvedValue(receipt);
+        } else {
+          mocks.callGatewayLeastPrivilege.mockRejectedValue(failure);
+        }
+        const request = runMessageAction({
+          cfg: createEnabledMessageActionConfig("discord"),
+          action,
+          params: {
+            channel: "discord",
+            guildId: "222",
+            expectedBotId: "111",
+            expectedCurrent: 0,
+            idempotencyKey: "stable-control-key",
+          },
+          sourceReplyFinal: true,
+          sourceReplyToolCallId: "control-call",
+          gateway: {
+            terminalSourceReplyReceiptOwner: "caller",
+            clientName: GATEWAY_CLIENT_NAMES.CLI,
+            mode: GATEWAY_CLIENT_MODES.CLI,
+          },
+          dryRun: false,
+        });
+        if (outcome === "receipt") {
+          expect((await request).payload).toBe(receipt);
+        } else {
+          await expect(request).rejects.toBe(failure);
+        }
+        expect(mocks.callGatewayLeastPrivilege).toHaveBeenCalledOnce();
+        expect(mocks.beginTerminalSourceReplyDelivery).not.toHaveBeenCalled();
+        expect(mocks.reconcileTerminalSourceReplyDelivery).not.toHaveBeenCalled();
+        expect(mocks.cancelTerminalSourceReplyDelivery).not.toHaveBeenCalled();
+      },
+    );
     it("owns terminal source-reply receipts before dispatching to a remote gateway", async () => {
       const gatewayPlugin = createGatewayActionPlugin({
         pluginId: "gatewaychat",

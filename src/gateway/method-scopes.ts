@@ -1,6 +1,11 @@
 // Gateway method authorization scope resolver.
 // Maps static and plugin-defined gateway methods to operator scopes.
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString as normalizeSessionActionParam } from "@openclaw/normalization-core/string-coerce";
+import {
+  GATEWAY_CLIENT_MODES,
+  GATEWAY_CLIENT_NAMES,
+} from "../../packages/gateway-protocol/src/client-info.js";
 import {
   isAdminOnlyNodeInvokeCommand,
   isBrowserProxyNodeInvokeCommand,
@@ -217,7 +222,21 @@ function findMissingOperatorScope(
 export function resolveLeastPrivilegeOperatorScopesForMethod(
   method: string,
   params?: unknown,
+  clientRequest?: { operatorCli: boolean; hasAgentRuntimeIdentity: boolean },
 ): OperatorScope[] {
+  // This is a client scope request, not a grant or the inbound method policy.
+  // Agent callers retain their attested turn route; the fixed control handler
+  // separately verifies the real operator profile, grant and current authority.
+  if (
+    clientRequest?.operatorCli &&
+    !clientRequest.hasAgentRuntimeIdentity &&
+    method === "message.action" &&
+    isRecord(params)
+  ) {
+    if (params.channel === "discord" && params.action === "guild-media-filter-set-all-members") {
+      return [ADMIN_SCOPE];
+    }
+  }
   if (isDynamicOperatorGatewayMethod(method)) {
     return resolveDynamicLeastPrivilegeOperatorScopesForMethod(method, params);
   }
@@ -227,6 +246,26 @@ export function resolveLeastPrivilegeOperatorScopesForMethod(
   }
   // Default-deny for unclassified methods.
   return [];
+}
+
+/** Request scopes for an existing client route without changing inbound authorization. */
+export function resolveLeastPrivilegeOperatorScopesForClientCall(
+  opts: {
+    method: string;
+    params?: unknown;
+    clientName?: string;
+    mode?: string;
+    agentRuntimeIdentityToken?: string;
+  },
+  explicitOperatorCli = false,
+): OperatorScope[] {
+  return resolveLeastPrivilegeOperatorScopesForMethod(opts.method, opts.params, {
+    operatorCli:
+      explicitOperatorCli ||
+      opts.clientName === GATEWAY_CLIENT_NAMES.CLI ||
+      opts.mode === GATEWAY_CLIENT_MODES.CLI,
+    hasAgentRuntimeIdentity: opts.agentRuntimeIdentityToken !== undefined,
+  });
 }
 
 /** Projects requested scopes through the original grant and this call's exact scope policy. */

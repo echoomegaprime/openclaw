@@ -85,7 +85,7 @@ import {
   ADMIN_SCOPE,
   WRITE_SCOPE,
   isGatewayMethodClassified,
-  resolveLeastPrivilegeOperatorScopesForMethod,
+  resolveLeastPrivilegeOperatorScopesForClientCall,
   type OperatorScope,
 } from "./method-scopes.js";
 import { assertGatewayCliMessageContext } from "./operator-cli-message-input.js";
@@ -1256,7 +1256,7 @@ export async function callGatewayCli<T = Record<string, unknown>>(
     return await callGatewayWithScopes(opts, opts.scopes);
   }
   const scopes = isGatewayMethodClassified(opts.method)
-    ? resolveLeastPrivilegeOperatorScopesForMethod(opts.method, opts.params)
+    ? resolveLeastPrivilegeOperatorScopesForClientCall(opts, true)
     : CLI_DEFAULT_OPERATOR_SCOPES;
   if (opts.method === "chat.abort" || opts.method === "sessions.abort") {
     return await callGatewayWithScopes(opts, scopes, true);
@@ -1267,7 +1267,7 @@ export async function callGatewayCli<T = Record<string, unknown>>(
 export async function callGatewayLeastPrivilege<T = Record<string, unknown>>(
   opts: CallGatewayBaseOptions,
 ): Promise<T> {
-  const scopes = resolveLeastPrivilegeOperatorScopesForMethod(opts.method, opts.params);
+  const scopes = resolveLeastPrivilegeOperatorScopesForClientCall(opts);
   return await callGatewayWithScopeEscalation(opts, scopes);
 }
 

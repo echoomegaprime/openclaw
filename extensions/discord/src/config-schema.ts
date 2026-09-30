@@ -298,6 +298,7 @@ const DiscordAccountSchemaBase = z
         accountId: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
         botId: DiscordSnowflakeStringSchema,
         guildIds: z.array(DiscordSnowflakeStringSchema).min(1),
+        allowSetAllMembers: z.boolean().optional(),
       })
       .strict()
       .optional(),

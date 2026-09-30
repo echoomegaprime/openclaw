@@ -45,6 +45,17 @@ function makeDeviceClient(connId: string, deviceId: string, role = "primary") {
 }
 
 describe("createGatewayRequestContext", () => {
+  it("preserves the kernel boot identity for message-control execution provenance", () => {
+    const params = makeContextParams();
+    Object.assign(params.runtime, { bootId: "kernel-boot-one" });
+
+    const context = createGatewayRequestContext(params);
+
+    expect(context).toMatchObject({ gatewayInstanceId: "kernel-boot-one" });
+    Object.assign(params.runtime, { bootId: "replacement-runtime-boot" });
+    expect(context).toMatchObject({ gatewayInstanceId: "kernel-boot-one" });
+  });
+
   it("prepares every recipient before the real merge's first notification and contains resolution failure", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const source = ensureProfileForEmail("event-source@example.test");

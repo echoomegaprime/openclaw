@@ -13,6 +13,7 @@ import type { ReplyDeliveryContext, ReplyPayload } from "../../auto-reply/reply-
 import type { MsgContext } from "../../auto-reply/templating.js";
 import type { MarkdownTableMode } from "../../config/types.base.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { ChannelControlOperationV1 } from "../../infra/outbound/message-control-operation.runtime.js";
 import type { MessagePresentation } from "../../interactive/payload.js";
 import type { OutboundMediaAccess } from "../../media/load-options.js";
 import type { ChatType } from "../chat-type.js";
@@ -771,6 +772,8 @@ export type ChannelMessageActionContext = {
   onPlatformSendDispatch?: () => Promise<void>;
   /** Revalidate the same owner synchronously after waits and immediately before platform I/O. */
   assertDirectAdapterHandoff?: () => void;
+  /** Private core-owned durable operation, never accepted from action params or the wire. */
+  controlOperation?: ChannelControlOperationV1;
   /** Ephemeral-authority sends must not enter replayable recovery. */
   skipQueue?: boolean;
 };

@@ -1,4 +1,25 @@
 // Channel action schemas describe plugin-declared actions available through channel UIs.
+import type {
+  ChannelControlOperationV1,
+  ChannelControlAdapter,
+} from "../infra/outbound/message-control-operation.runtime.js";
+
+export type {
+  ChannelControlOperationV1,
+  ChannelControlAdapter,
+  ChannelControlPhysicalHandoff,
+  ChannelControlPhysicalRequest,
+  ChannelControlResult,
+} from "../infra/outbound/message-control-operation.runtime.js";
+
+/** Consume only a capability supplied by the current host invocation. */
+export async function executeChannelControlOperation(
+  capability: ChannelControlOperationV1,
+  adapter: ChannelControlAdapter,
+) {
+  const owner = await import("../infra/outbound/message-control-operation.runtime.js");
+  return await owner.executeChannelControlOperation(capability, adapter);
+}
 
 export {
   createUnionActionGate,

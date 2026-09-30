@@ -216,6 +216,7 @@ function describeDiscordMessageTool({
   const mediaFilterAccounts = accountId ? [accountId] : listDiscordAccountIds(cfg);
   if (mediaFilterAccounts.some((id) => resolveGuildMediaFilterReadBinding(cfg, id))) {
     actions.add("guild-media-filter-get");
+    actions.add("guild-media-filter-set-all-members");
     schema.push({
       actions: ["guild-media-filter-get"],
       properties: {
@@ -224,6 +225,46 @@ function describeDiscordMessageTool({
             pattern: "^\\d+$",
             description:
               "Required expected bot user ID; must match the configured media-filter read binding.",
+          }),
+        ),
+      },
+    });
+    schema.push({
+      actions: ["guild-media-filter-set-all-members"],
+      properties: {
+        expectedBotId: Type.Optional(
+          Type.String({
+            pattern: "^\\d+$",
+            description: "Required configured bot ID, verified through the selected account.",
+          }),
+        ),
+        expectedCurrent: Type.Optional(
+          Type.Integer({
+            minimum: 0,
+            maximum: 2,
+            description:
+              "Required for apply: expected current filter (0, 1, or 2). This comparison is not atomic with Discord's update.",
+          }),
+        ),
+        controlMode: Type.Optional(
+          Type.Union(
+            [
+              Type.Literal("apply"),
+              Type.Literal("read"),
+              Type.Literal("reconcile"),
+              Type.Literal("cancel"),
+            ],
+            {
+              description:
+                "Defaults to apply. New writes require allowSetAllMembers:true and host authority. Receipt modes remain available when writes are disabled.",
+            },
+          ),
+        ),
+        operationId: Type.Optional(
+          Type.String({
+            pattern: "^[A-Za-z0-9._:-]{1,256}$",
+            description:
+              "Required existing operation ID for read, reconcile, or cancel; reconciliation observes without replaying a write.",
           }),
         ),
       },
@@ -300,7 +341,14 @@ export const discordMessageActions: ChannelMessageActionAdapter = {
     "voice-status",
     "event-list",
   ],
-  writeAuthorityActions: ["channel-edit", "delete", "edit", "pin", "unpin"],
+  writeAuthorityActions: [
+    "channel-edit",
+    "delete",
+    "edit",
+    "pin",
+    "unpin",
+    "guild-media-filter-set-all-members",
+  ],
   // Credential-only Discord actions run in the gateway when one is available.
   // Send/file-style actions stay local because core owns their thread, media,
   // component, and client-local payload semantics.
@@ -392,6 +440,7 @@ export const discordMessageActions: ChannelMessageActionAdapter = {
     reply,
     progressSnapshot,
     assertDirectAdapterHandoff,
+    controlOperation,
   }) => {
     return await (
       await loadDiscordChannelActionsRuntime()
@@ -413,6 +462,7 @@ export const discordMessageActions: ChannelMessageActionAdapter = {
       ...(reply ? { reply } : {}),
       ...(progressSnapshot ? { progressSnapshot } : {}),
       ...(assertDirectAdapterHandoff ? { assertDirectAdapterHandoff } : {}),
+      ...(controlOperation ? { controlOperation } : {}),
     });
   },
 };

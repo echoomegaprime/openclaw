@@ -133,6 +133,9 @@ function captureCommand(command: OpenClawStateReadCommand): OpenClawStateReadCom
   if (command.type === "operatorApprovals.history") {
     return { ...command, input: { ...command.input } };
   }
+  if (command.type === "messageControl.read") {
+    return { ...command, input: { ...command.input } };
+  }
   if (command.type === "tasks.mutationSnapshot") {
     const scope = command.input;
     return {
@@ -292,6 +295,13 @@ function commandBytes(command: OpenClawStateReadRequest["command"]): number {
         Buffer.byteLength(entry.runId ?? "", "utf8") +
         Buffer.byteLength(entry.childSessionKey ?? "", "utf8"),
       bytes,
+    );
+  }
+  if (command.type === "messageControl.read") {
+    return (
+      bytes +
+      Buffer.byteLength(command.input.namespace, "utf8") +
+      Buffer.byteLength(command.input.operationId, "utf8")
     );
   }
   if (

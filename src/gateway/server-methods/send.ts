@@ -47,11 +47,6 @@ import {
   projectOutboundPayloadPlanForMirror,
 } from "../../infra/outbound/payloads.js";
 import { buildOutboundSessionContext } from "../../infra/outbound/session-context.js";
-import {
-  beginTerminalSourceReplyDelivery,
-  cancelTerminalSourceReplyDelivery,
-  reconcileTerminalSourceReplyDelivery,
-} from "../../infra/outbound/source-reply-mirror.js";
 import { maybeResolveIdLikeTarget } from "../../infra/outbound/target-resolver.js";
 import { resolveOutboundTarget } from "../../infra/outbound/targets.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
@@ -72,6 +67,7 @@ import { withChannelReadAuthority } from "../../shared/channel-read-authority.js
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import { resolveGatewayConversationReadOrigin } from "../conversation-read-origin.js";
 import { selectMessageActionRequesterIdentity } from "../message-action-turn-capability.js";
+import type { prepareGatewayMessageControl } from "../message-control-preparation.js";
 import {
   authorizeGatewaySessionCreation,
   resolveSandboxedSessionCreation,
@@ -92,13 +88,13 @@ import {
   resolveAgentRuntimeMessageActionConfig,
   resolveTrustedMessageActionToolContext,
 } from "./message-action-context.js";
+import { createMessageActionSourceReply } from "./message-action-source-reply.js";
 import {
   buildGatewayDeliveryPayload,
   createGatewayInflightAuthorityFailure,
   createGatewayInflightResult,
   createGatewayInflightSuccess,
   createGatewayInflightUnavailableFailure,
-  scheduleDeliveredSourceReplyTranscriptMirror,
 } from "./message-operation-result.js";
 import type { GatewayRequestContext, GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -765,13 +761,8 @@ function resolveMessageActionRuntimeConfig(params: {
 }
 
 export const sendHandlers: GatewayRequestHandlers = {
-  "message.action": async ({
-    params: request,
-    respond,
-    context,
-    client,
-    sessionMutationCommitGuard,
-  }) => {
+  "message.action": async (invocation) => {
+    const { params: request, respond, context, client, sessionMutationCommitGuard } = invocation;
     if (!assertValidParams(request, validateMessageActionParams, "message.action", respond)) {
       return;
     }
@@ -802,6 +793,14 @@ export const sendHandlers: GatewayRequestHandlers = {
     const downstreamMessageActionAuthorization = trustedContext.messageActionAuthorization
       ? { ...trustedContext.messageActionAuthorization, toolContext: downstreamToolContext }
       : undefined;
+    const isControlAction = request.action === "guild-media-filter-set-all-members";
+    let controlPreparation: Awaited<ReturnType<typeof prepareGatewayMessageControl>> | undefined;
+    const assertControlCallerCurrent = () => {
+      if (!messageAuthority.agentRuntimeAuthority.hasActive()) {
+        throw new Error("Message-control caller authority is unavailable.");
+      }
+      assertDirectAdapterHandoff?.();
+    };
     await withMessageOperationRoute({
       context,
       prefix: "message.action",
@@ -817,8 +816,18 @@ export const sendHandlers: GatewayRequestHandlers = {
         binding?.reservedRoute?.accountId,
       ],
       conflictMessage: "message.action accountId does not match params.accountId",
-      authorize: messageAuthority.agentRuntimeAuthority.hasActive,
-      replayResults: messageAuthority.assertReadCurrent === undefined,
+      authorize: isControlAction
+        ? () => {
+            try {
+              assertControlCallerCurrent();
+              controlPreparation?.assertCurrent();
+              return true;
+            } catch {
+              return false;
+            }
+          }
+        : messageAuthority.agentRuntimeAuthority.hasActive,
+      replayResults: !isControlAction && messageAuthority.assertReadCurrent === undefined,
       resolveChannel: async (requestChannel) => {
         const resolved = await resolveRequestedChannel({
           requestChannel,
@@ -857,6 +866,19 @@ export const sendHandlers: GatewayRequestHandlers = {
       },
       work: async ({ cfg, channel, plugin, canonicalAction, accountId, dedupeKey, authorize }) => {
         try {
+          if (isControlAction) {
+            const { prepareGatewayMessageControl } =
+              await import("../message-control-preparation.js");
+            controlPreparation = await prepareGatewayMessageControl({
+              invocation,
+              request,
+              cfg,
+              channel,
+              plugin,
+              accountId,
+              assertCurrent: assertControlCallerCurrent,
+            });
+          }
           const completed = await withChannelReadAuthority(
             request.action === "download-file" || messageAuthority.assertReadCurrent
               ? assertDirectAdapterHandoff
@@ -953,27 +975,32 @@ export const sendHandlers: GatewayRequestHandlers = {
                   }),
                 });
               }
-              const sourceReplyMirror = {
-                action: request.action,
-                channel,
-                actionParams: request.params,
-                cfg,
-                accountId,
-                currentAccountId: trustedContext.requesterAccountId,
-                sessionKey: sourceReplySessionKey ?? sessionKey,
-                sessionId: trustedContext.sessionId,
-                agentId,
-                toolContext: trustedContext.toolContext,
-                replyToIsExplicit: request.reply?.source === "explicit",
-                idempotencyKey: request.idempotencyKey,
-                toolCallId: trustedContext.sourceReplyToolCallId,
-                ...(trustedContext.sourceReplyFinal !== undefined
-                  ? { sourceReplyFinal: trustedContext.sourceReplyFinal }
-                  : {}),
-              };
+              const sourceReplyDelivery = createMessageActionSourceReply({
+                mirror: {
+                  action: request.action,
+                  channel,
+                  actionParams: request.params,
+                  cfg,
+                  accountId,
+                  currentAccountId: trustedContext.requesterAccountId,
+                  sessionKey: sourceReplySessionKey ?? sessionKey,
+                  sessionId: trustedContext.sessionId,
+                  agentId,
+                  toolContext: trustedContext.toolContext,
+                  replyToIsExplicit: request.reply?.source === "explicit",
+                  idempotencyKey: request.idempotencyKey,
+                  toolCallId: trustedContext.sourceReplyToolCallId,
+                  ...(trustedContext.sourceReplyFinal !== undefined
+                    ? { sourceReplyFinal: trustedContext.sourceReplyFinal }
+                    : {}),
+                },
+                context,
+                sessionKey,
+                enabled: !isControlAction,
+              });
               const terminalDeliveryStart =
-                trustedContext.sourceReplyFinal === true
-                  ? await beginTerminalSourceReplyDelivery(sourceReplyMirror)
+                !isControlAction && trustedContext.sourceReplyFinal === true
+                  ? await sourceReplyDelivery.begin()
                   : undefined;
               if (terminalDeliveryStart && "outcome" in terminalDeliveryStart) {
                 return createGatewayInflightSuccess({
@@ -983,11 +1010,10 @@ export const sendHandlers: GatewayRequestHandlers = {
                   channel,
                 });
               }
-              const terminalDeliveryReceipt = terminalDeliveryStart;
               // Attachment and receipt preparation can outlive the admitted run.
               // Close the receipt and stop before the provider-owned action boundary.
               if (!authorize()) {
-                await cancelTerminalSourceReplyDelivery(terminalDeliveryReceipt);
+                await sourceReplyDelivery.cancel();
                 return createGatewayInflightAuthorityFailure({ context, dedupeKey, channel });
               }
               const gatewayClientScopes = client?.connect?.scopes ?? [];
@@ -1020,7 +1046,11 @@ export const sendHandlers: GatewayRequestHandlers = {
                 dryRun: false,
                 messageActionAuthorization: downstreamMessageActionAuthorization,
                 gatewayClientScopes,
-                assertDirectAdapterHandoff,
+                ...(controlPreparation
+                  ? { controlOperation: controlPreparation.controlOperation }
+                  : {}),
+                assertDirectAdapterHandoff:
+                  controlPreparation?.assertCurrent ?? assertDirectAdapterHandoff,
                 onPlatformSendDispatch,
                 // Model-authored sends own proven-not-sent retries; every scheduled
                 // generic delivery must also stay inside its admitted job lifetime.
@@ -1028,38 +1058,6 @@ export const sendHandlers: GatewayRequestHandlers = {
                   client?.internal?.agentRuntimeIdentity !== undefined &&
                   (request.action === "send" ||
                     Boolean(trustedContext.messageActionAuthorization?.scheduled)),
-              };
-              const settleTerminalDelivery = async (
-                deliveredPayload: unknown,
-                mirrorTranscript = true,
-              ) => {
-                try {
-                  await reconcileTerminalSourceReplyDelivery({
-                    deliveredPayload,
-                    mirror: sourceReplyMirror,
-                    receipt: terminalDeliveryReceipt,
-                  });
-                } catch (err) {
-                  // The pre-send intent remains durable. Return the provider result so
-                  // the model does not retry an external effect with an unknown outcome.
-                  context.logGateway?.warn?.(
-                    "Terminal source reply receipt reconciliation failed.",
-                    {
-                      error: formatForLog(err),
-                      channel,
-                      sessionKey,
-                    },
-                  );
-                }
-                if (mirrorTranscript) {
-                  await scheduleDeliveredSourceReplyTranscriptMirror({
-                    context,
-                    mirror: {
-                      ...sourceReplyMirror,
-                      deliveredPayload,
-                    },
-                  });
-                }
               };
               let payload: unknown;
               try {
@@ -1091,7 +1089,7 @@ export const sendHandlers: GatewayRequestHandlers = {
                   if (handled) {
                     payload = extractToolPayload(handled);
                   } else {
-                    await cancelTerminalSourceReplyDelivery(terminalDeliveryReceipt);
+                    await sourceReplyDelivery.cancel();
                     const error = errorShape(
                       ErrorCodes.INVALID_REQUEST,
                       `Message action ${request.action} not supported for channel ${channel}.`,
@@ -1105,14 +1103,14 @@ export const sendHandlers: GatewayRequestHandlers = {
                   }
                 }
               } catch (err) {
-                if (isChannelPartialDeliveryError(err)) {
+                if (!isControlAction && isChannelPartialDeliveryError(err)) {
                   // Accepted delivery evidence settles the terminal receipt, but it
                   // cannot prove which requested parts should enter the transcript.
-                  await settleTerminalDelivery(err.deliveryResult, false);
+                  await sourceReplyDelivery.settle(err.deliveryResult, false);
                 }
                 throw err;
               }
-              await settleTerminalDelivery(payload);
+              await sourceReplyDelivery.settle(payload);
               // A downloaded artifact is not cacheable until the enclosing read
               // has accepted its provider/caller lifetime and resource identity.
               return request.action === "download-file"
@@ -1142,7 +1140,7 @@ export const sendHandlers: GatewayRequestHandlers = {
           return createGatewayInflightUnavailableFailure({ context, dedupeKey, channel, err });
         }
       },
-    });
+    }).finally(() => controlPreparation?.close());
   },
   send: async ({ params: request, respond, context, client, sessionMutationCommitGuard }) => {
     if (!assertValidParams(request, validateSendParams, "send", respond)) {

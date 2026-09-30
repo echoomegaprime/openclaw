@@ -310,11 +310,13 @@ export type DiscordAccountConfig = Omit<
     maxLinesPerMessage?: number;
     /** Per-action tool gating (default: true for all). */
     actions?: DiscordActionConfig;
-    /** Exact account/bot/guild binding for read-only media-filter inspection. */
+    /** Exact account/bot/guild binding for media-filter control. Writes require a separate opt-in. */
     guildMediaFilter?: {
       accountId: string;
       botId: string;
       guildIds: string[];
+      /** Fixed all-members media filter only; disabled unless explicitly true. */
+      allowSetAllMembers?: boolean;
     };
     /** Thread session behavior. */
     thread?: DiscordThreadConfig;

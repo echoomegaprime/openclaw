@@ -2717,3 +2717,28 @@ CREATE TABLE IF NOT EXISTS secret_store_entries (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS secret_store_entries_live_idx
   ON secret_store_entries (scope_kind, scope_id, name) WHERE deleted_at_ms IS NULL;
+-- Fixed message-control effects are retained independently of sessions and approvals.
+CREATE TABLE IF NOT EXISTS channel_control_operations (
+  operation_id TEXT PRIMARY KEY NOT NULL,
+  namespace TEXT NOT NULL,
+  request_key TEXT NOT NULL,
+  attempt_id TEXT NOT NULL,
+  stable_json TEXT NOT NULL CHECK (json_valid(stable_json)),
+  stable_digest TEXT NOT NULL,
+  execution_json TEXT NOT NULL CHECK (json_valid(execution_json)),
+  resource_key TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK (phase IN ('prepared', 'dispatching', 'settled', 'unknown')),
+  held INTEGER NOT NULL CHECK (held IN (0, 1)),
+  result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
+  observation_json TEXT CHECK (observation_json IS NULL OR json_valid(observation_json)),
+  cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE (namespace, request_key),
+  CHECK ((phase = 'settled' AND held = 0) OR (phase != 'settled' AND held = 1)),
+  CHECK (length(CAST(stable_json AS BLOB)) + length(CAST(execution_json AS BLOB)) + length(CAST(namespace AS BLOB)) + length(CAST(request_key AS BLOB)) + length(CAST(operation_id AS BLOB)) + length(CAST(attempt_id AS BLOB)) <= 7168),
+  CHECK (length(CAST(COALESCE(result_json, '') AS BLOB)) + length(CAST(COALESCE(observation_json, '') AS BLOB)) <= 1024)
+) STRICT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_control_held_resource
+  ON channel_control_operations(resource_key) WHERE held = 1;
+-- END channel_control_operations

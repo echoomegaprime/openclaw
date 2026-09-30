@@ -359,8 +359,56 @@ normalize an RPC request to a selected account before plugin dispatch, so the
 plugin validates that trusted selection against the binding; it does not prove
 that the original RPC caller supplied an account selector.
 
-Only GET requests are used. The result excludes the broad guild object. No
-write action is provided: the existing generic message-action deduplication is
-process-local and does not supply the durable pre-write admission needed for a
-guild settings mutation. See the [Discord guild API](https://docs.discord.com/developers/resources/guild#explicit-content-filter-level)
+Only GET requests are used by this inspection action. The result excludes the
+broad guild object. See the [Discord guild API](https://docs.discord.com/developers/resources/guild#explicit-content-filter-level)
 for the platform's filter values.
+
+## Set the media filter to all members
+
+The separate `guild-media-filter-set-all-members` action requires the same exact
+binding plus `guildMediaFilter.allowSetAllMembers: true`. This write opt-in is
+disabled by default. Its only provider mutation is
+`explicit_content_filter: 2`; it cannot change text/profanity rules, channel age
+restrictions, roles, permissions, or other guild settings.
+
+The Gateway must supply a current, private control capability from an existing
+authorized route: a verified operator administrator, an attested system-owner
+connection, or a current Discord turn whose sender is both a linked operator
+administrator and a guild manager. An ordinary bot credential, unlinked guild
+moderator, scheduled job, caller-supplied owner flag, or generic `operator.write`
+scope is insufficient. The operation grants no new access. Older hosts lacking
+the capability refuse the operation before provider I/O.
+
+Supply the exact expected current value (`0`, `1`, or `2`) and a stable
+idempotency key. The core state owner commits intent before provider mutation,
+checks the current value, and permits at most one physical PATCH handoff through
+the normal Discord transport. It disables this PATCH's automatic rate-limit and
+redirect replay; ordinary Discord retry behavior is unchanged. A successful
+acknowledgment requires an independent GET returning `2` before the result is
+`verified_updated`. The result always reports `atomicCas: false`: Discord does
+not provide an atomic conditional update here, so another administrator can
+change the value between the GET and PATCH or after readback.
+
+Use [the receipt, reconciliation, and cancellation commands](/cli/message#discord-guild-media-filter-control)
+to inspect a retained operation. An ambiguous handoff holds the guild field
+across accounts and restarts with intact history. Neither a new key nor a later
+GET of `2` proves that the original write succeeded. Reconciliation records only
+the observation; cancellation records intent and does not erase an uncertain
+hold. No automatic replay or hold-clearing operation is provided.
+
+### Restored or uncertain state history
+
+Before activating a restored, cloned, replaced, or uncertain state database,
+keep the setter disabled in the effective selected configuration. Verify this
+for the actual direct, service, scheduled, restart/update, profile/state-directory,
+and rollback launch path. An activation path that cannot preserve disabled
+admission is unsupported for this feature and must remain stopped. Receipt reads,
+reconciliation GETs, and cancellation intent remain available to eligible callers
+with the read binding while writes are disabled.
+
+This first version does not automate that launch procedure or detect arbitrary
+out-of-band history loss. An empty/missing table, fresh process generation, new
+key, or current provider value never establishes that erased operations are
+safe to repeat. Binary rollback must preserve the control table and leave the
+setter disabled; do not delete records to clear a hold. See
+[the durable control record](/reference/database-schemas/layout#channel-control-operations).

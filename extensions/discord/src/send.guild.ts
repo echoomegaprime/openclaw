@@ -31,6 +31,8 @@ import {
   timeoutGuildMember,
   type APIChannel,
 } from "./internal/discord.js";
+import type { DiscordPhysicalHandoff } from "./internal/rest-physical-handoff.js";
+import { DiscordError } from "./internal/rest.js";
 import { resolveDiscordRest } from "./send.shared.js";
 import type {
   DiscordModerationTarget,
@@ -103,6 +105,28 @@ export async function verifyGuildMediaFilterBotDiscord(
     throw new Error("Discord media-filter bot identity does not match the configured binding.");
   }
   return bot.id;
+}
+
+/** Fixed operation only. Unknown post-handoff failures remain for core reconciliation. */
+export async function setGuildMediaFilterAllMembersDiscord(
+  guildId: string,
+  opts: DiscordReactOpts,
+  physicalHandoff: DiscordPhysicalHandoff,
+): Promise<"acknowledged" | "rejected"> {
+  const rest = resolveDiscordRest(opts);
+  try {
+    await rest.patch(`/guilds/${guildId}`, { body: { explicit_content_filter: 2 } }, undefined, {
+      physicalHandoff,
+    });
+    return "acknowledged";
+  } catch (error) {
+    // Only explicit provider rejection statuses are terminal rejections. Network,
+    // timeout, 408, 5xx and unrecognized outcomes must not imply a safe replay.
+    if (error instanceof DiscordError && [400, 401, 403, 404, 405, 429].includes(error.status)) {
+      return "rejected";
+    }
+    throw error;
+  }
 }
 
 export async function listGuildChannelsDiscord(

@@ -44,6 +44,7 @@ import { executeDevicePairingRead } from "../infra/device-pairing-read.kernel.js
 import { readExecApprovalsConfigRow } from "../infra/exec-approvals-sqlite.js";
 import { executeSqliteQuerySync } from "../infra/kysely-sync.js";
 import { inspectCurrentConversationBindingRecordInDatabase } from "../infra/outbound/current-conversation-bindings.kernel.js";
+import { readMessageControlOperation } from "../infra/outbound/message-control-operation.kernel.js";
 import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
 import { runWithSqliteWorkerStateContext } from "../infra/sqlite-worker-state-context.js";
 import { withStateDatabaseCoordinatorRuntimeDirectory } from "../infra/state-database-coordinator.js";
@@ -397,6 +398,14 @@ serveOwnedWorkerTasks(
                     type: command.type,
                     sourceAdmitted,
                     history: listTerminalOperatorApprovalsInDatabase(command.input, db),
+                  };
+                }
+                if (command.type === "messageControl.read") {
+                  return {
+                    ok: true,
+                    type: command.type,
+                    sourceAdmitted,
+                    record: readMessageControlOperation(db, command.input),
                   };
                 }
                 if (command.type === "onboardingRecommendations.read") {

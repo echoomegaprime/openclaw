@@ -105,6 +105,8 @@ const CHANNEL_MESSAGE_ACTION_READ_POLICIES = {
   "member-info": CONVERSATION_READ,
   "role-info": CONVERSATION_READ,
   "guild-media-filter-get": CONVERSATION_READ,
+  // The mutation and its receipt modes also need the normal provider guild gate.
+  "guild-media-filter-set-all-members": CONVERSATION_READ,
   "emoji-list": CONVERSATION_READ,
   "emoji-upload": NO_CONVERSATION_READ,
   "sticker-upload": NO_CONVERSATION_READ,

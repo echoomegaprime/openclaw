@@ -159,6 +159,12 @@ export function isReadRequest(input: unknown): input is OpenClawStateReadRequest
           typeof input.command.input.includeRunId === "string")) ||
       input.command.type === "fleet.list" ||
       (input.command.type === "operatorApprovals.history" && isRecord(input.command.input)) ||
+      (input.command.type === "messageControl.read" &&
+        isRecord(input.command.input) &&
+        typeof input.command.input.namespace === "string" &&
+        Buffer.byteLength(input.command.input.namespace, "utf8") <= 1024 &&
+        typeof input.command.input.operationId === "string" &&
+        Buffer.byteLength(input.command.input.operationId, "utf8") <= 256) ||
       input.command.type === "nodeHost.config" ||
       (input.command.type === "onboardingRecommendations.read" &&
         typeof input.command.configKey === "string") ||

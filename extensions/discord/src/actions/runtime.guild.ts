@@ -14,6 +14,7 @@ import { isDiscordThreadChannelType } from "../channel-type.js";
 import { getGateway } from "../monitor/gateway-registry.js";
 import { getPresence } from "../monitor/presence-cache.js";
 import * as discordGuildActionRuntime from "../send.js";
+import { controlGuildMediaFilter } from "./runtime.guild-media-filter-control.js";
 import { readGuildMediaFilter } from "./runtime.guild-media-filter.js";
 import {
   createDiscordMessagingActionContext,
@@ -348,6 +349,14 @@ export async function handleDiscordGuildAction(
     });
   };
   switch (action) {
+    case "guildMediaFilterSetAllMembers": {
+      return await controlGuildMediaFilter({
+        values: params,
+        cfg,
+        options,
+        assertGuildReadAllowed: assertGuildMetadataReadAllowed,
+      });
+    }
     case "guildMediaFilterGet": {
       return await readGuildMediaFilter({
         values: params,

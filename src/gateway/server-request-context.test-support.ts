@@ -33,6 +33,7 @@ export function makeContextParams(
   const config = {} as never;
   return {
     runtime: {
+      bootId: "fixture-kernel-boot",
       getSessionRowProjection: () => undefined,
       connectionWork: { track: trackAsyncWork },
       deps: {} as never,

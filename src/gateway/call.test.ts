@@ -16,6 +16,7 @@ import type { DeviceAuthEntry } from "../shared/device-auth.js";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue } from "../test-utils/env.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { registerGatewayCallDeadlineTests } from "./call-deadline.test-support.js";
+import { registerMessageControlGatewayCallTests } from "./call.message-control.test-support.js";
 import type { GatewayClientOptions, GatewayClientRequestOptions } from "./client.js";
 import { waitForFast } from "./client.test-support.js";
 import {
@@ -296,6 +297,7 @@ const {
   buildGatewayProbeConnectionDetails,
   callGateway,
   callGatewayCli,
+  callGatewayLeastPrivilege,
   formatGatewayAuthErrorJson,
   formatGatewayClientRequestErrorJson,
   formatGatewayTransportErrorJson,
@@ -975,21 +977,18 @@ describe("callGateway url resolution", () => {
     expect(lastClientOptions?.tlsFingerprint).toBeUndefined();
   });
 
-  it.each([
-    {
-      label: "uses least-privilege scopes by default for non-CLI callers",
-      call: () => callGateway({ method: "health" }),
-      expectedScopes: ["operator.read"],
+  registerMessageControlGatewayCallTests({
+    callGateway,
+    callGatewayCli,
+    callGatewayLeastPrivilege,
+    setLocalLoopbackGatewayConfig,
+    clientOptions: () => lastClientOptions,
+    startCalls: () => startCalls,
+    rejectRequests: (error) => {
+      gatewayClientRequest = async () => {
+        throw error;
+      };
     },
-    {
-      label: "uses least-privilege scopes by default for explicit CLI callers",
-      call: () => callGatewayCli({ method: "health" }),
-      expectedScopes: ["operator.read"],
-    },
-  ])("scope selection: $label", async ({ call, expectedScopes }) => {
-    setLocalLoopbackGatewayConfig();
-    await call();
-    expect(lastClientOptions?.scopes).toEqual(expectedScopes);
   });
 
   it.each([

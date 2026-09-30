@@ -30,6 +30,7 @@ const messagingActions = new Set([
 
 const guildActions = new Set([
   "guildMediaFilterGet",
+  "guildMediaFilterSetAllMembers",
   "memberInfo",
   "roleInfo",
   "emojiList",

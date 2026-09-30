@@ -25,3 +25,9 @@ export function resolveGuildMediaFilterReadBinding(cfg: OpenClawConfig, accountI
   }
   return binding;
 }
+
+/** The fixed write is a separate explicit opt-in; receipt inspection remains readable. */
+export function resolveGuildMediaFilterWriteBinding(cfg: OpenClawConfig, accountId: string) {
+  const binding = resolveGuildMediaFilterReadBinding(cfg, accountId);
+  return binding?.allowSetAllMembers === true ? binding : undefined;
+}

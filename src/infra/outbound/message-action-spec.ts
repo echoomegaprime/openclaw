@@ -53,6 +53,7 @@ const MESSAGE_ACTION_TARGET_MODE: Record<ChannelMessageActionName, MessageAction
   "member-info": "none",
   "role-info": "none",
   "guild-media-filter-get": "none",
+  "guild-media-filter-set-all-members": "none",
   "emoji-list": "none",
   "emoji-upload": "none",
   "sticker-upload": "none",

@@ -189,6 +189,8 @@ export type GatewaySystemAgentSession = {
 /** Kernel-owned services and state that can be constructed without binding sockets. */
 type GatewayKernelContext = {
   deps: CliDeps;
+  /** Existing kernel boot identity; absent on lightweight non-serving contexts. */
+  readonly gatewayInstanceId?: string;
   /** Host-bound plugin ingress; the transport owns its shared hook dispatch queue. */
   dispatchHookAgentTurn?: (
     pluginId: string,

@@ -52,6 +52,7 @@ import {
   executeCurrentConversationBindingCommand,
   readCurrentConversationBindingSelectionInWorker,
 } from "../infra/outbound/current-conversation-bindings.worker.js";
+import * as messageControl from "../infra/outbound/message-control-operation.worker.js";
 import { executePromotionCommand } from "../infra/promotions-feed.worker.js";
 import { isApnsRegistrationWorkerCommand } from "../infra/push-apns-store.worker-contract.js";
 import { executeApnsRegistrationCommand } from "../infra/push-apns-store.worker.js";
@@ -163,6 +164,13 @@ export function executeSharedStateCommand(
   }
   if (isMcpOAuthWorkerCommand(command)) {
     return executeMcpOAuthWorkerCommand(open(), command);
+  }
+  if (messageControl.isMessageControlCommand(command)) {
+    return messageControl.executeMessageControlCommand(command, {
+      database: open(),
+      path: context.databasePath,
+      env: getSqliteWorkerStateContext().environment,
+    });
   }
   if (command.type === "execApprovals.commitAuthorizations" || isOperatorApprovalCommand(command)) {
     const databaseOptions = {

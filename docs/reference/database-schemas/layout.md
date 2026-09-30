@@ -32,6 +32,36 @@ and retention are unchanged. `openclaw update` runs Doctor before activation;
 after a direct binary replacement or using an older writer, run
 `openclaw doctor --fix` before starting the new Gateway.
 
+### Channel control operations
+
+The shared state database owns `channel_control_operations`, an optional STRICT
+first-use table for the fixed Discord all-members media-filter operation. The
+existing SQLite worker broker commits admission and dispatch through its native
+transaction and commit guards; read-only receipt lookup never creates a missing
+database or table. No plugin-local journal or alternate database is used.
+
+Records bind a principal namespace, stable key and exact intent, original
+execution provenance, one attempt, phase, result, latest observation, and
+cancellation intent. `(namespace, request_key)` is unique, and a partial unique
+index holds the guild field across accounts while prepared, dispatching, or
+unknown. The store caps admission at 4,096 retained records and bounds each
+record's payload. It never deletes an uncertain record to make capacity.
+
+The table and its indexes are additive under state schema 18; existing schema
+guards remain unchanged. The exact pre-feature `36cea698` package's normal
+state-owner read/write was tested on a synthetic candidate database: prepared,
+unknown, and settled record bytes survived, and the candidate still refused a
+new operation against the held guild after reopening. This is bounded binary
+compatibility evidence, not a guarantee for arbitrary older builds, restore
+procedures, or external state writers.
+
+Rollback preserves the table and disables new control writes. Do not remove
+the table, restore an older snapshot with writes enabled, or infer erased
+history from a new process. Follow the
+[restored-history activation contract](/channels/discord/access-control#restored-or-uncertain-state-history);
+it intentionally requires setter-disabled launches when retained history is
+uncertain. No automatic replay or uncertain-hold retirement is implemented.
+
 ### Activity session recaps
 
 [Activity](/web/control-ui/settings#activity-tab) stores one optional `activitySummary` object in the existing `session_nodes.entry_json` session metadata. This is a reconstructible cache; the transcript remains canonical. The [approved persistence design](https://github.com/openclaw/openclaw/issues/147383) adds no SQL table, column, or database schema-version change. Current and `v2026.9.4` metadata serializers preserve unknown optional fields; unknown recap payload versions are treated as cache misses.

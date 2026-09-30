@@ -554,7 +554,9 @@ describe("loadBundledEntryExportSync", () => {
       | undefined;
     expect(jitiOptions?.tryNative).toBe(false);
     expect(jitiOptions?.nativeModules).toEqual(["openclaw"]);
-    expect(sourceLoad).toHaveBeenCalledWith(sidecarPath);
+    expect(sourceLoad).toHaveBeenCalledWith(
+      process.platform === "win32" ? pathToFileURL(sidecarPath).href : sidecarPath,
+    );
   });
 
   it("does not replay a failed native sidecar through the plugin transformer", () => {

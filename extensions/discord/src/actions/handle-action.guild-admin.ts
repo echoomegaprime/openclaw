@@ -84,6 +84,30 @@ export async function tryHandleDiscordMessageActionGuildAdmin(params: {
   const accountId = ctx.accountId ?? readStringParam(actionParams, "accountId");
   const senderUserId = readDiscordRequesterSenderId(ctx);
 
+  if (action === "guild-media-filter-get") {
+    const explicitAccountId = readStringParam(actionParams, "accountId", { required: true });
+    if (ctx.accountId && ctx.accountId !== explicitAccountId) {
+      throw new Error("Discord media-filter account binding does not match the selected account.");
+    }
+    if (
+      ctx.toolContext?.currentChannelProvider?.trim().toLowerCase() === "discord" &&
+      !senderUserId
+    ) {
+      throw new Error("Discord media-filter reads require a trusted Discord sender identity.");
+    }
+    return await handleDiscordAction(
+      {
+        action: "guildMediaFilterGet",
+        accountId: explicitAccountId,
+        guildId: readStringParam(actionParams, "guildId", { required: true }),
+        expectedBotId: readStringParam(actionParams, "expectedBotId", { required: true }),
+        ...senderParam(senderUserId),
+      },
+      cfg,
+      readPolicyOptions,
+    );
+  }
+
   if (action === "member-info") {
     const userId = readStringParam(actionParams, "userId", { required: true });
     const guildId = readStringParam(actionParams, "guildId", {

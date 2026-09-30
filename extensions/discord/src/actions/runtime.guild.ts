@@ -14,6 +14,7 @@ import { isDiscordThreadChannelType } from "../channel-type.js";
 import { getGateway } from "../monitor/gateway-registry.js";
 import { getPresence } from "../monitor/presence-cache.js";
 import * as discordGuildActionRuntime from "../send.js";
+import { readGuildMediaFilter } from "./runtime.guild-media-filter.js";
 import {
   createDiscordMessagingActionContext,
   type DiscordMessagingActionOptions,
@@ -347,6 +348,13 @@ export async function handleDiscordGuildAction(
     });
   };
   switch (action) {
+    case "guildMediaFilterGet": {
+      return await readGuildMediaFilter({
+        values: params,
+        cfg,
+        assertGuildReadAllowed: assertGuildMetadataReadAllowed,
+      });
+    }
     case "memberInfo": {
       if (!isActionEnabled("memberInfo")) {
         throw new Error("Discord member info is disabled.");

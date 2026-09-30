@@ -11,6 +11,15 @@ type AdminCase = {
 };
 
 const cases: AdminCase[] = [
+  {
+    command: "guild media-filter get",
+    action: "guild-media-filter-get",
+    required: {
+      guildId: "111111111111111111",
+      expectedBotId: "222222222222222222",
+      account: "default",
+    },
+  },
   { command: "role info", action: "role-info", required: { guildId: "guild-1" } },
   {
     command: "role add",
@@ -149,7 +158,9 @@ describe("Discord-admin message registration", () => {
     ({ command: path, required, optional = {} }) => {
       const { command } = setup();
       expect(leaf(command, path).options.map((option) => option.long)).toEqual([
-        ...Object.keys(required).map(flag),
+        ...Object.keys(required)
+          .filter((key) => key !== "account")
+          .map(flag),
         "--channel",
         "--account",
         "--json",

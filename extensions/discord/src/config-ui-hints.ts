@@ -41,6 +41,26 @@ export const discordChannelConfigUiHints = {
     label: "Discord Guild Join Introduction",
     help: "Post one brief, room-specific introduction when the bot joins an allowed Discord guild (default: true). Account settings override the channel-wide setting.",
   },
+  "actions.guildMediaFilter": {
+    label: "Discord Guild Media Filter Read",
+    help: "Enable read-only guild media-filter inspection (default: false). Requires an exact account, bot, and guild binding; grants no write or guild access.",
+  },
+  guildMediaFilter: {
+    label: "Discord Guild Media Filter Read Binding",
+    help: "Trusted account/bot/guild binding for optional read-only inspection. Existing guild read policies and management permissions still apply.",
+  },
+  "guildMediaFilter.accountId": {
+    label: "Media Filter Account ID",
+    help: "Exact existing Discord account ID. Inherited bindings cannot authorize a different account.",
+  },
+  "guildMediaFilter.botId": {
+    label: "Media Filter Bot User ID",
+    help: "Expected numeric bot user ID, checked against the authenticated account before guild inspection.",
+  },
+  "guildMediaFilter.guildIds": {
+    label: "Media Filter Guild IDs",
+    help: "Exact numeric guild IDs eligible for read-only inspection. Wildcards are not supported.",
+  },
   proxy: {
     label: "Discord Proxy URL",
     help: "Proxy URL for Discord gateway + API requests (app-id lookup and allowlist resolution). Set per account via channels.discord.accounts.<id>.proxy.",

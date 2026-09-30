@@ -18,6 +18,7 @@ import {
   createGuildBan,
   createGuildScheduledEvent,
   getChannel,
+  getCurrentUser,
   getGuild,
   getGuildMember,
   getGuildVoiceState,
@@ -91,6 +92,17 @@ export async function fetchGuildInfoDiscord(
 ): Promise<APIGuild> {
   const rest = resolveDiscordRest(opts);
   return await getGuild(rest, guildId);
+}
+
+export async function verifyGuildMediaFilterBotDiscord(
+  expectedBotId: string,
+  opts: DiscordReactOpts,
+) {
+  const bot = await getCurrentUser(resolveDiscordRest(opts));
+  if (bot.id !== expectedBotId || bot.bot !== true) {
+    throw new Error("Discord media-filter bot identity does not match the configured binding.");
+  }
+  return bot.id;
 }
 
 export async function listGuildChannelsDiscord(

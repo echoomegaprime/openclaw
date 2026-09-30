@@ -13,6 +13,7 @@ import { Type } from "typebox";
 import { inspectDiscordAccount } from "./account-inspect.js";
 import { createDiscordActionGate, listDiscordAccountIds } from "./accounts.js";
 import { coerceDiscordComponentParam, readDiscordComponentSpec } from "./components.js";
+import { resolveGuildMediaFilterReadBinding } from "./guild-media-filter-policy.js";
 import { withDiscordInboundEventDeliveryMetadata } from "./inbound-event-delivery.js";
 import { matchesDiscordToolContextTarget, normalizeDiscordMessagingTarget } from "./normalize.js";
 import { isTrustedRequesterGuildAdminAction } from "./trusted-requester-actions.js";
@@ -212,6 +213,22 @@ function describeDiscordMessageTool({
     actions.add("set-presence");
   }
   const schema: ChannelMessageToolSchemaContribution[] = [];
+  const mediaFilterAccounts = accountId ? [accountId] : listDiscordAccountIds(cfg);
+  if (mediaFilterAccounts.some((id) => resolveGuildMediaFilterReadBinding(cfg, id))) {
+    actions.add("guild-media-filter-get");
+    schema.push({
+      actions: ["guild-media-filter-get"],
+      properties: {
+        expectedBotId: Type.Optional(
+          Type.String({
+            pattern: "^\\d+$",
+            description:
+              "Required expected bot user ID; must match the configured media-filter read binding.",
+          }),
+        ),
+      },
+    });
+  }
   if (actions.has("react")) {
     schema.push({
       actions: ["react", "reactions"],
@@ -277,6 +294,7 @@ export const discordMessageActions: ChannelMessageActionAdapter = {
     "permissions",
     "member-info",
     "role-info",
+    "guild-media-filter-get",
     "emoji-list",
     "channel-list",
     "voice-status",

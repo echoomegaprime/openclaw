@@ -101,6 +101,8 @@ export type DiscordActionConfig = {
   search?: boolean;
   memberInfo?: boolean;
   roleInfo?: boolean;
+  /** Enable bound guild media-filter reads (default: false). */
+  guildMediaFilter?: boolean;
   roles?: boolean;
   channelInfo?: boolean;
   voiceStatus?: boolean;
@@ -308,6 +310,12 @@ export type DiscordAccountConfig = Omit<
     maxLinesPerMessage?: number;
     /** Per-action tool gating (default: true for all). */
     actions?: DiscordActionConfig;
+    /** Exact account/bot/guild binding for read-only media-filter inspection. */
+    guildMediaFilter?: {
+      accountId: string;
+      botId: string;
+      guildIds: string[];
+    };
     /** Thread session behavior. */
     thread?: DiscordThreadConfig;
     dm?: DiscordDmConfig;

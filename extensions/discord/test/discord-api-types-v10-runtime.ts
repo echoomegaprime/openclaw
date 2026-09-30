@@ -16,6 +16,7 @@ export const {
   GatewayDispatchEvents,
   GatewayIntentBits,
   GatewayOpcodes,
+  GuildExplicitContentFilter,
   GuildMemberFlags,
   InteractionContextType,
   InteractionResponseType,

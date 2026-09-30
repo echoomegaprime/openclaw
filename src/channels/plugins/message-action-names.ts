@@ -33,6 +33,7 @@ export const CHANNEL_MESSAGE_ACTION_NAMES = [
   "sticker-search",
   "member-info",
   "role-info",
+  "guild-media-filter-get",
   "emoji-list",
   "emoji-upload",
   "sticker-upload",

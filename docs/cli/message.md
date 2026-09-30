@@ -301,6 +301,28 @@ If any target fails, is suppressed, or only partially delivers, the broadcast
 exits nonzero. Text output identifies failed targets; JSON reports `ok: false`
 and retains every target's result, including failures returned by channel plugins.
 
+## Discord guild media-filter inspection
+
+```bash
+openclaw message guild media-filter get --channel discord --account default \
+  --guild-id 111111111111111111 --expected-bot-id 222222222222222222 --json
+```
+
+This read-only action requires an explicit account, guild ID, and expected bot
+user ID. It is disabled by default; see the
+[Discord access controls](/channels/discord/access-control#guild-media-filter-inspection)
+for the trusted configuration binding. The authenticated bot must match that
+binding and have Manage Guild or Administrator. Discord-origin requests also
+require the trusted requester's corresponding guild permission. Existing host
+and guild read-access controls still apply.
+
+The result contains only `accountId`, `botId`, `guildId`, and
+`explicitContentFilter`, plus `ok`. Discord defines filter values as `0`
+(disabled), `1` (members without roles), and `2` (all members).
+The action reports the measured setting; it does not test classifier accuracy
+or age-restricted-channel coverage. It changes no media filter, text filter,
+channel setting, or permissions. There is no setter command.
+
 ## Related
 
 - [CLI reference](/cli)

@@ -4,6 +4,7 @@ import type { MessageCliHelpers } from "./helpers.js";
 
 const requiredOptions = {
   guild: ["--guild-id <id>", "Guild id"],
+  expectedBot: ["--expected-bot-id <id>", "Expected authenticated Discord bot user id"],
   user: ["--user-id <id>", "User id"],
   role: ["--role-id <id>", "Role id"],
   eventName: ["--event-name <name>", "Event name"],
@@ -31,6 +32,17 @@ export function registerMessageDiscordAdminCommands(message: Command, helpers: M
   }
 
   const role = message.command("role").description("Role actions");
+  const guild = message.command("guild").description("Guild actions");
+  const mediaFilter = guild.command("media-filter").description("Guild media-filter inspection");
+  const mediaFilterGet = register(
+    mediaFilter,
+    "get",
+    "Read the bound guild media filter",
+    "guild-media-filter-get",
+    ["guild", "expectedBot"],
+  );
+  // This inspection must never select an implicit default account.
+  mediaFilterGet.options.find((option) => option.long === "--account")?.makeOptionMandatory();
   register(role, "info", "List roles", "role-info", ["guild"]);
   register(role, "add", "Add role to a member", "role-add", ["guild", "user", "role"]);
   register(role, "remove", "Remove role from a member", "role-remove", ["guild", "user", "role"]);

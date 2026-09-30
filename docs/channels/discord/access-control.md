@@ -319,3 +319,48 @@ Default gate behavior:
 | roles                                                                                                                                                                    | disabled |
 | moderation                                                                                                                                                               | disabled |
 | presence                                                                                                                                                                 | disabled |
+
+## Guild media-filter inspection
+
+The `guild-media-filter-get` action is an optional read of Discord's
+`explicit_content_filter`. Opt in for an existing account using both the action
+gate and an exact account/bot/guild binding:
+
+```json5 validate=false
+{
+  channels: {
+    discord: {
+      actions: { guildMediaFilter: true },
+      guildMediaFilter: {
+        accountId: "default",
+        botId: "222222222222222222",
+        guildIds: ["111111111111111111"],
+      },
+    },
+  },
+}
+```
+
+These are placeholder IDs and a partial configuration. Reuse the account's
+existing credentials. The binding does not grant guild access or permissions;
+all existing read policies still apply. Another account cannot inherit this
+binding because its account ID must match exactly. Wildcard guild IDs are
+rejected and caller-supplied REST fields are not forwarded. With either opt-in absent, the new
+action is unavailable.
+
+The CLI requires `--account`, `--guild-id`, and `--expected-bot-id`. The operation
+checks the authenticated bot identity, guild read policy, and bot Manage Guild
+or Administrator permission before returning the measured value. Discord-origin
+requests use the host's trusted sender identity and require the same guild
+permission; model-supplied sender or owner fields cannot authorize a read.
+
+The CLI requires an explicit account selection. Existing host routing may
+normalize an RPC request to a selected account before plugin dispatch, so the
+plugin validates that trusted selection against the binding; it does not prove
+that the original RPC caller supplied an account selector.
+
+Only GET requests are used. The result excludes the broad guild object. No
+write action is provided: the existing generic message-action deduplication is
+process-local and does not supply the durable pre-write admission needed for a
+guild settings mutation. See the [Discord guild API](https://docs.discord.com/developers/resources/guild#explicit-content-filter-level)
+for the platform's filter values.

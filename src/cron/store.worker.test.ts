@@ -1,3 +1,4 @@
+import path from "node:path";
 import { DatabaseSync, StatementSync } from "node:sqlite";
 import { expectDefined } from "@openclaw/normalization-core";
 import { formatErrorMessage } from "@openclaw/normalization-core/error-coercion";
@@ -446,7 +447,7 @@ describe("worker save result publication", () => {
   ])(
     "publishes committed or uncertain saves before success=$ok committed=$committed",
     async ({ ok, committed }) => {
-      const storePath = `/synthetic/cron-save-${ok}-${committed}/jobs.json`;
+      const storePath = path.resolve(`/synthetic/cron-save-${ok}-${committed}/jobs.json`);
       const failure = new Error("save settlement failed", {
         cause: Object.assign(new Error("database busy"), { code: "SQLITE_BUSY" }),
       });
@@ -472,7 +473,7 @@ describe("worker save result publication", () => {
   );
 
   it("invalidates before rejecting an unavailable write result", async () => {
-    const storePath = "/synthetic/cron-save-unavailable/jobs.json";
+    const storePath = path.resolve("/synthetic/cron-save-unavailable/jobs.json");
     const failure = new Error("worker result unavailable");
     vi.spyOn(stateWorker, "runOpenClawStateWorkerOperation").mockRejectedValue(failure);
     const before = getCronJobsStoreRevision(storePath);
@@ -483,7 +484,7 @@ describe("worker save result publication", () => {
   it.each([false, true])(
     "keeps a stale save distinguishable after partition eviction before reply=%s",
     async (evictBeforeReply) => {
-      const storePath = `/synthetic/cron-save-eviction-${evictBeforeReply}/jobs.json`;
+      const storePath = path.resolve(`/synthetic/cron-save-eviction-${evictBeforeReply}/jobs.json`);
       const pending = createDeferred<CronStoreSaveWorkerOperations["cron.save"]["output"]>();
       vi.spyOn(stateWorker, "runOpenClawStateWorkerOperation").mockImplementation(
         async (_context, operation) =>
@@ -492,7 +493,7 @@ describe("worker save result publication", () => {
       const evictPartition = () => {
         for (let index = 0; index < 65; index += 1) {
           noteCronJobsStoreCommit(
-            `/synthetic/cron-save-eviction-${evictBeforeReply}/peer-${index}`,
+            path.resolve(`/synthetic/cron-save-eviction-${evictBeforeReply}/peer-${index}`),
           );
         }
       };
@@ -510,14 +511,15 @@ describe("worker save result publication", () => {
   );
 
   it("does not reuse an untracked load revision after its committed partition is evicted", () => {
-    const storePath = "/synthetic/cron-load-revision-eviction/jobs.json";
+    // The publication helper accepts an already canonical SQLite partition key.
+    const storePath = path.resolve("/synthetic/cron-load-revision-eviction/jobs.json");
     const loadedRevision = getCronJobsStoreRevision(storePath);
     noteCronJobsStoreCommit(storePath);
     const trackedRevision = getCronJobsStoreRevision(storePath);
-    noteCronJobsStoreCommit("/synthetic/cron-load-revision-eviction/peer-0");
+    noteCronJobsStoreCommit(path.resolve("/synthetic/cron-load-revision-eviction/peer-0"));
     expect(getCronJobsStoreRevision(storePath)).toBe(trackedRevision);
     for (let index = 1; index < 65; index += 1) {
-      noteCronJobsStoreCommit(`/synthetic/cron-load-revision-eviction/peer-${index}`);
+      noteCronJobsStoreCommit(path.resolve(`/synthetic/cron-load-revision-eviction/peer-${index}`));
     }
     expect(getCronJobsStoreRevision(storePath)).not.toBe(loadedRevision);
   });
@@ -525,7 +527,7 @@ describe("worker save result publication", () => {
   it.each([false, true])(
     "returns an operation-bound revision when an intervening commit exists=%s",
     async (intervening) => {
-      const storePath = `/synthetic/cron-save-revision-${intervening}/jobs.json`;
+      const storePath = path.resolve(`/synthetic/cron-save-revision-${intervening}/jobs.json`);
       const pending = createDeferred<CronStoreSaveWorkerOperations["cron.save"]["output"]>();
       vi.spyOn(stateWorker, "runOpenClawStateWorkerOperation").mockImplementation(
         async (_context, operation) =>

@@ -28,6 +28,7 @@ import { leaseMcpAppModelContextForTurn } from "../../agents/mcp-app-model-conte
 import { resolveReplyExpectation } from "../../agents/reply-completion.js";
 import { createAgentPatchedSessionModelRunGuard } from "../../agents/session-model-auto-revert.js";
 import { readChannelContextGatewayContextResolver } from "../../channels/message-access/admission-evidence.js";
+import { bindLocalChannelFollowupAdmission } from "../../channels/message-access/local-channel-principal.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import {
@@ -530,6 +531,7 @@ async function executeAgentTurnInternal(
         ? captureCommandOwnerAssertion(params.followupRun.run)
         : undefined,
     onAdmitted: (context) => {
+      bindLocalChannelFollowupAdmission(params.followupRun, context);
       bindGatewayContextResolver(context, gatewayContextResolver);
       admittedRunContext.current = context;
       params.followupRun.run.skillLibraryAuthoring?.bind(context);

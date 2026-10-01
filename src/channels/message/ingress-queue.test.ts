@@ -12,7 +12,7 @@ import {
 } from "../../infra/kysely-sync.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
 import {
-  closeOpenClawStateDatabaseForTest,
+  closeOpenClawStateDatabaseAsync,
   openOpenClawStateDatabase,
 } from "../../state/openclaw-state-db.js";
 import { createChannelIngressQueue } from "./ingress-queue.js";
@@ -39,7 +39,7 @@ async function withTempState<T>(fn: (stateDir: string) => Promise<T>): Promise<T
   try {
     return await fn(stateDir);
   } finally {
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
     await fs.rm(stateDir, { recursive: true, force: true });
   }
 }
@@ -49,8 +49,8 @@ function openIngressStateDatabase(stateDir: string) {
 }
 
 describe("channel ingress queue", () => {
-  afterEach(() => {
-    closeOpenClawStateDatabaseForTest();
+  afterEach(async () => {
+    await closeOpenClawStateDatabaseAsync();
   });
 
   it("deduplicates pending and completed ingress events", async () => {

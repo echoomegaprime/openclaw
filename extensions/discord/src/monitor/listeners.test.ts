@@ -35,6 +35,49 @@ async function flushAsyncWork() {
 }
 
 describe("DiscordMessageListener", () => {
+  it("reports bounded admission identity without private error text", async () => {
+    const logger = createLogger();
+    const handler = vi.fn(async () => {
+      throw Object.assign(new Error("private database path and message body"), {
+        name: "StateDatabaseCoordinatorContentionError",
+        family: "state-lifecycle",
+      });
+    });
+    const listener = new DiscordMessageListener(
+      handler as never,
+      logger as never,
+      undefined,
+      "default",
+    );
+    await listener.handle(
+      { id: "100000000000000001", channel_id: "200000000000000001" } as never,
+      {} as never,
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      "discord durable admission failed",
+      expect.objectContaining({
+        stage: "durable-admission",
+        category: "state-lifecycle-contention",
+        accountId: "default",
+        messageId: "100000000000000001",
+        channelId: "200000000000000001",
+      }),
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain("private");
+    expect(handler).toHaveBeenCalledOnce();
+  });
+  it("does not retry or throw when an admission diagnostic callback fails", async () => {
+    const handler = vi.fn(async () => {
+      throw new Error("original private failure");
+    });
+    const logger = createLogger();
+    logger.error.mockImplementation(() => {
+      throw new Error("diagnostic failure");
+    });
+    const listener = new DiscordMessageListener(handler as never, logger as never);
+    await expect(listener.handle(fakeEvent("ch-1"), {} as never)).resolves.toBeUndefined();
+    expect(handler).toHaveBeenCalledOnce();
+  });
   it("waits for handler completion", async () => {
     let resolveHandler: (() => void) | undefined;
     const handlerDone = new Promise<void>((resolve) => {
@@ -137,7 +180,11 @@ describe("DiscordMessageListener", () => {
     await expect(listener.handle(fakeEvent("ch-1"), {} as never)).resolves.toBeUndefined();
     await flushAsyncWork();
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(firstErrorMessage(logger)).toContain("discord handler failed: Error: boom");
+    expect(logger.error).toHaveBeenCalledWith(
+      "discord durable admission failed",
+      expect.objectContaining({ category: "admission-failed" }),
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain("boom");
   });
 
   it("calls onEvent callback for each message", async () => {

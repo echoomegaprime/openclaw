@@ -18,7 +18,7 @@ export type MessageControlSession =
       sessionId: string;
       lifecycleRevision: string;
     };
-export type MessageControlStableBinding = {
+type MessageControlStableBinding = {
   version: 1;
   principal: MessageControlPrincipal;
   session: MessageControlSession;

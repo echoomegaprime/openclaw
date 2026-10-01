@@ -16,6 +16,7 @@ import {
   type ChannelIngressResolutionScope,
 } from "./admission-evidence-scope-key.js";
 import type { ChannelIngressHostOwner, ChannelParticipantInput } from "./ingress-host-owner.js";
+import { copyNativeLocalChannelPrincipal } from "./local-channel-principal.js";
 import type {
   ChannelIngressContextBinding,
   ResolvedChannelMessageIngress,
@@ -450,6 +451,7 @@ export function readChannelContextGatewayContextResolver(
 
 /** Preserve private evidence only when its owner explicitly replaces an unchanged context. */
 export function copyChannelParticipantAdmissionEvidence(source: object, target: object): void {
+  copyNativeLocalChannelPrincipal(source, target);
   const original = readContextAdmission(source);
   if (!original) {
     return;

@@ -21,6 +21,7 @@ import {
   OpenClawSSEClientTransport,
   OpenClawStreamableHTTPClientTransport,
 } from "./mcp-http-transport.js";
+import { bindMcpLocalChannelTransport } from "./mcp-local-channel-context.js";
 import { withMcpOAuthBearer } from "./mcp-oauth-fetch.js";
 import { operatorMcpOAuthIdentity, requesterMcpOAuthIdentity } from "./mcp-oauth-identity.js";
 import { OpenClawStdioClientTransport } from "./mcp-stdio-transport.js";
@@ -145,6 +146,7 @@ export function resolveMcpTransport(
       prepareDataDir: options?.prepareDataDir,
       stderr: "pipe",
     });
+    bindMcpLocalChannelTransport({ transport, serverName, rawServer, cfg: options?.cfg });
     return {
       transport,
       description: resolved.description,

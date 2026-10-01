@@ -64,19 +64,42 @@ export class DiscordMessageListener extends MessageCreateListener {
     private handler: DiscordMessageHandler,
     private logger?: Logger,
     private onEvent?: () => void,
+    private accountId?: string,
   ) {
     super();
   }
 
   async handle(data: DiscordRawMessageEvent, client: Client) {
     this.onEvent?.();
+    const startedAt = performance.now();
     // This awaits only the durable append. Agent dispatch remains detached behind
     // the ingress drain, so later gateway events never wait for a model turn.
     try {
       await this.handler(data, client);
     } catch (err) {
-      const logger = this.logger ?? discordEventQueueLog;
-      logger.error(danger(`discord handler failed: ${String(err)}`));
+      // Diagnostics must not expose reports or turn a settled admission into a retry.
+      try {
+        const logger = this.logger ?? discordEventQueueLog;
+        const id = (value: unknown) =>
+          typeof value === "string" && /^\d{1,20}$/.test(value) ? value : undefined;
+        const category =
+          err instanceof Error && err.name === "StateDatabaseCoordinatorContentionError"
+            ? "state-lifecycle-contention"
+            : "admission-failed";
+        logger.error("discord durable admission failed", {
+          stage: "durable-admission",
+          category,
+          accountId:
+            this.accountId && /^[a-z0-9_-]{1,64}$/.test(this.accountId)
+              ? this.accountId
+              : undefined,
+          messageId: id(data.id),
+          channelId: id(data.channel_id),
+          elapsedMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        });
+      } catch {
+        // Injected logging callbacks are optional and may throw.
+      }
     }
   }
 }

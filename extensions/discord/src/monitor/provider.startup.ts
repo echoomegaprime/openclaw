@@ -259,7 +259,12 @@ export function registerDiscordMonitorListeners(params: {
   );
   registerDiscordListener(
     params.client.listeners,
-    new DiscordMessageListener(params.messageHandler, params.logger, params.trackInboundEvent),
+    new DiscordMessageListener(
+      params.messageHandler,
+      params.logger,
+      params.trackInboundEvent,
+      params.accountId,
+    ),
   );
   const guildJoinListener = new DiscordGuildJoinIntroductionListener({
     readPolicy: params.readPolicy,

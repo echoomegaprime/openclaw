@@ -5,7 +5,6 @@ import {
   ErrorCode,
   ListToolsResultSchema,
   McpError,
-  type CallToolResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
@@ -49,6 +48,7 @@ import {
 } from "./mcp-connection-resolver.js";
 import { redactMcpDiagnosticError } from "./mcp-error.js";
 import { createMcpJsonSchemaValidator } from "./mcp-json-schema-validator.js";
+import { callMcpLocalChannelTool } from "./mcp-local-channel-context.js";
 import {
   buildMcpClientCapabilities,
   normalizeToolUiVisibility,
@@ -1053,16 +1053,15 @@ function createServerMcpRuntime(
     },
     async callTool(requestedServer, toolName, input) {
       const session = await getActiveSession(requestedServer);
-      const validateResult = session.toolMetadata?.validatorForCall(toolName);
-      const result = (await runGuardedMcpRequest(session, (signal) =>
-        session.client.callTool(
-          { name: toolName, arguments: isRecord(input) ? input : {} },
-          undefined,
-          { timeout: session.requestTimeoutMs, signal },
-        ),
-      )) as CallToolResult;
-      validateResult?.(result);
-      return result;
+      return callMcpLocalChannelTool({
+        session,
+        toolName,
+        input,
+        runtime: params,
+        failIfDisposed,
+        isCurrent: () => currentSession === session,
+        runGuarded: (request) => runGuardedMcpRequest(session, request),
+      });
     },
     async listTools(requestedServer, requestParams) {
       const session = await getActiveSession(requestedServer);

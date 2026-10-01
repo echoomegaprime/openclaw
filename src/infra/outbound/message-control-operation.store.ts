@@ -10,7 +10,7 @@ import type { MessageControlWorkerOperations } from "./message-control-operation
 
 const log = createSubsystemLogger("outbound/message-control");
 type Operation = keyof MessageControlWorkerOperations;
-export function messageControlDiagnostic(event: {
+function messageControlDiagnostic(event: {
   operationId?: string;
   attemptId?: string;
   operation: string;

@@ -1,5 +1,6 @@
 /** Shared durable channel-ingress admission, pump, retention, and shutdown lifecycle. */
 import { formatErrorMessage } from "../../infra/errors.js";
+import { hasUnknownSqliteWorkerOutcome } from "../../infra/sqlite-worker-contract.js";
 import {
   getGatewayRestartDrainSignal,
   getGatewaySuspendAdmissionPhase,
@@ -562,6 +563,11 @@ export function createChannelIngressMonitor<TRaw, TBody, TStoredPayload, TMetada
         });
         return result;
       } catch (error) {
+        // A worker may have committed before losing its reply. The existing
+        // durable drain owns reconciliation; admission must not replay it.
+        if (hasUnknownSqliteWorkerOutcome(error)) {
+          throw error;
+        }
         lastError = error;
       }
     }

@@ -17,6 +17,7 @@ import {
   type OwnedStdioProcess,
 } from "../process/owned-stdio.js";
 import type { ProcessCleanupResult } from "../process/supervisor/types.js";
+import { assertMcpLocalChannelWrite } from "./mcp-local-channel-context.js";
 import { recordAgentCleanupFailure } from "./run-cleanup-timeout.js";
 
 type McpStdioDecoder = Pick<ReadBuffer, "append" | "readMessage" | "clear">;
@@ -243,6 +244,7 @@ export class OpenClawStdioClientTransport implements Transport {
       // Settle from the write callback so async EPIPE rejects instead of
       // escaping to uncaughtException. (#75438)
       try {
+        assertMcpLocalChannelWrite(this, message);
         stdin.write(json, (err) => {
           if (err) {
             reject(err);

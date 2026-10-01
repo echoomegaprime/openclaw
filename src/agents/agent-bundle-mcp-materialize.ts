@@ -32,6 +32,10 @@ import {
   setMcpCodeModeGuestResult,
   setMcpCodeModeGuestResultFromAgentResult,
 } from "./mcp-content.js";
+import {
+  captureMcpLocalChannelPrincipal,
+  hasMcpLocalChannelPrincipal,
+} from "./mcp-local-channel-context.js";
 import { isMcpToolAllowed } from "./mcp-tool-filter.js";
 import { buildMcpAppCanvasPayload, fetchMcpAppView } from "./mcp-ui-resource.js";
 import { recordAgentCleanupFailure } from "./run-cleanup-timeout.js";
@@ -426,6 +430,7 @@ export function buildBundleMcpToolsFromCatalog(params: {
 
 export async function materializeBundleMcpToolsForRun(params: {
   runtime: SessionMcpRuntime;
+  admittedRunContext?: import("./admitted-run-context.js").AdmittedRunContext;
   agentId?: string;
   reservedToolNames?: Iterable<string>;
   /** Transfer the lease admitted by the manager before returning this runtime. */
@@ -433,10 +438,18 @@ export async function materializeBundleMcpToolsForRun(params: {
   disposeRuntime?: () => Promise<void>;
 }): Promise<BundleMcpToolRuntime> {
   const runtime = params.runtime;
+  const protectedView = hasMcpLocalChannelPrincipal(params.admittedRunContext);
+  const withPrincipal = captureMcpLocalChannelPrincipal(params.admittedRunContext, {
+    agentId: params.agentId,
+    sessionId: runtime.sessionId,
+    sessionKey: runtime.sessionKey,
+  });
+  let disposed = false;
   let disposal: Promise<void> | undefined;
   let allowedAppToolsByServer: Map<string, Set<string>> | undefined;
   let releaseLease: (() => void) | undefined;
   const dispose = async () => {
+    disposed = true;
     disposal ??= (async () => {
       // Failure to release the lease cannot strand this view's private runtime.
       try {
@@ -467,6 +480,7 @@ export async function materializeBundleMcpToolsForRun(params: {
     releaseLease = params.releaseLease ?? runtime.acquireLease?.();
     runtime.markUsed();
     const catalog = await runtime.getCatalog();
+    withPrincipal(() => undefined);
     const reservedToolNames = params.reservedToolNames
       ? Array.from(params.reservedToolNames)
       : undefined;
@@ -476,50 +490,60 @@ export async function materializeBundleMcpToolsForRun(params: {
       catalog: materializedCatalog,
       reservedToolNames,
       createExecute: (tool) => (toolCallId: string, input: unknown, signal?: AbortSignal) =>
-        runWithSessionMcpRequestSignal(signal, async () => {
-          if (!Object.hasOwn(catalog.servers, tool.serverName)) {
-            const connect = runtime.requesterConnect?.createExecute(tool.serverName);
-            if (connect) {
-              return setMcpCodeModeGuestResultFromAgentResult(await connect(toolCallId, input));
+        withPrincipal(() =>
+          runWithSessionMcpRequestSignal(signal, async () => {
+            if (disposed && protectedView) {
+              throw new Error("MCP tool view is closed");
             }
-          }
-          runtime.markUsed();
-          const { serverName, toolName } = tool;
-          const result = await runtime.callTool(serverName, toolName, input);
-          const agentResult = projectMcpCallToolResult(result, {
-            mcpServer: serverName,
-            mcpTool: toolName,
-          });
-          // Requester-scoped servers never mint app views (outlive run; no requester id on view boundary).
-          const scopedServer = runtime.isRequesterScopedServer?.(serverName) === true;
-          if (runtime.mcpAppsEnabled && tool.uiResourceUri && !scopedServer) {
-            const allowedAppToolNames = allowedAppToolsByServer
-              ? (allowedAppToolsByServer.get(serverName) ?? new Set<string>())
-              : undefined;
-            const view = await fetchMcpAppView({
-              runtime,
-              agentId: params.agentId,
-              serverName,
-              toolName,
-              uiResourceUri: tool.uiResourceUri,
-              toolCallId,
-              toolInput: input,
-              toolResult: result,
-              ...(allowedAppToolNames ? { allowedAppToolNames } : {}),
+            if (!Object.hasOwn(catalog.servers, tool.serverName)) {
+              const connect = runtime.requesterConnect?.createExecute(tool.serverName);
+              if (connect) {
+                return setMcpCodeModeGuestResultFromAgentResult(await connect(toolCallId, input));
+              }
+            }
+            runtime.markUsed();
+            const { serverName, toolName } = tool;
+            const result = await runtime.callTool(serverName, toolName, input);
+            withPrincipal(() => undefined);
+            if (disposed && protectedView) {
+              throw new Error("MCP tool view is closed");
+            }
+            const agentResult = projectMcpCallToolResult(result, {
+              mcpServer: serverName,
+              mcpTool: toolName,
             });
-            if (view) {
-              (agentResult.details as Record<string, unknown>).mcpAppPreview =
-                buildMcpAppCanvasPayload({
-                  ...view,
-                  ...(runtime.sessionKey ? { originSessionKey: runtime.sessionKey } : {}),
-                  ...(result["_meta"] !== undefined
-                    ? { resultMetaState: "unavailable" as const }
-                    : {}),
-                });
+            // Requester-scoped servers never mint app views (outlive run; no requester id on view boundary).
+            const scopedServer = runtime.isRequesterScopedServer?.(serverName) === true;
+            if (runtime.mcpAppsEnabled && tool.uiResourceUri && !scopedServer) {
+              const allowedAppToolNames = allowedAppToolsByServer
+                ? (allowedAppToolsByServer.get(serverName) ?? new Set<string>())
+                : undefined;
+              const view = await fetchMcpAppView({
+                runtime,
+                agentId: params.agentId,
+                serverName,
+                toolName,
+                uiResourceUri: tool.uiResourceUri,
+                toolCallId,
+                toolInput: input,
+                toolResult: result,
+                ...(allowedAppToolNames ? { allowedAppToolNames } : {}),
+              });
+              if (view) {
+                (agentResult.details as Record<string, unknown>).mcpAppPreview =
+                  buildMcpAppCanvasPayload({
+                    ...view,
+                    ...(runtime.sessionKey ? { originSessionKey: runtime.sessionKey } : {}),
+                    ...(result["_meta"] !== undefined
+                      ? { resultMetaState: "unavailable" as const }
+                      : {}),
+                  });
+              }
             }
-          }
-          return agentResult;
-        }),
+            withPrincipal(() => undefined);
+            return agentResult;
+          }),
+        ),
       createResourceListExecute: runtime.listResources
         ? (serverName) => (_toolCallId, _input, signal) =>
             runWithSessionMcpRequestSignal(signal, async () => {

@@ -249,12 +249,14 @@ describe("private fixed message-control capability", () => {
     adapter.getCurrentValue.mockResolvedValueOnce(0).mockResolvedValueOnce(2);
     const owner = api.createMessageControlCapability({ admission, store, assertCurrent() {} });
     const result = await api.executeChannelControlOperation(owner.capability, adapter);
-    expect(store.admit.mock.invocationCallOrder[0]).toBeLessThan(
-      store.dispatch.mock.invocationCallOrder[0],
-    );
-    expect(store.dispatch.mock.invocationCallOrder[0]).toBeLessThan(
-      adapter.patch.mock.invocationCallOrder[0],
-    );
+    const admitOrder = store.admit.mock.invocationCallOrder[0];
+    const dispatchOrder = store.dispatch.mock.invocationCallOrder[0];
+    const patchOrder = adapter.patch.mock.invocationCallOrder[0];
+    if (admitOrder === undefined || dispatchOrder === undefined || patchOrder === undefined) {
+      throw new Error("Expected admission, dispatch, and physical handoff before comparing order");
+    }
+    expect(admitOrder).toBeLessThan(dispatchOrder);
+    expect(dispatchOrder).toBeLessThan(patchOrder);
     expect(adapter.patch).toHaveBeenCalledTimes(1);
     expect(adapter.getCurrentValue).toHaveBeenCalledTimes(2);
     expect(result.record?.result?.disposition).toBe("verified_updated");

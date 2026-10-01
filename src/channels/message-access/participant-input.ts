@@ -3,6 +3,7 @@ import type { MsgContext } from "../../auto-reply/templating.js";
 import { prepareSessionParticipantInput } from "../../sessions/session-participant-input.js";
 import { takeChannelParticipantInput } from "./admission-evidence.js";
 import type { ChannelIngressHostOwner } from "./ingress-host-owner.js";
+import { bindNativeLocalChannelPrincipal } from "./local-channel-principal.js";
 import type {
   ChannelIngressContextBinding,
   ResolvedChannelMessageIngress,
@@ -18,6 +19,8 @@ export function bindChannelParticipantInput(params: {
     | undefined;
   binding: ChannelIngressContextBinding;
   owner: ChannelIngressHostOwner;
+  /** Exact native producer snapshot matches the built context after any awaited work. */
+  localChannelContextMatches?: boolean;
 }): void {
   if (!params.ingress || params.ingress === "unsupported") {
     return;
@@ -48,6 +51,10 @@ export function bindChannelParticipantInput(params: {
     }
   }
   const principal = batch.at(-1)?.verifiedPrincipal;
+  // One native event only. A collected report cannot borrow its final participant's intake authority.
+  if (params.localChannelContextMatches === true && batch.length === 1 && batch[0]) {
+    bindNativeLocalChannelPrincipal(params.context, batch[0]);
+  }
   const principalKey = principal && JSON.stringify(principal);
   const gateway = params.owner.resolveGatewayContext?.();
   if (

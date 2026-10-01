@@ -6,6 +6,7 @@ import type { SubagentRegistryWrite } from "../agents/subagents/registry/subagen
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
 import type { AuditEventListQuery, AuditEventListPage } from "../audit/audit-event-types.js";
 import type { AuditWriterOperations } from "../audit/audit-event-writer.types.js";
+import type { IngressWorkerOperations } from "../channels/message/ingress-queue.worker-contract.js";
 import type { ClawInstallSchemaVersionRow } from "../claws/provenance-runtime-read.kernel.js";
 import type { readSqliteDatabaseBloat } from "../commands/doctor-db-bloat.read.js";
 import type { ConfigHealthPatch } from "../config/io.health-state.kernel.js";
@@ -90,7 +91,8 @@ import type { UserProfileWorkerOperations } from "./user-profiles.worker.js";
 export type OpenClawStateWorkerOpenPreparation = { type: "deviceIdentity"; identityKey: string };
 
 /** Commands share one physical shared-state actor; bindings belong to commands, not open input. */
-export type OpenClawStateWorkerOperations = McpOAuthReadOperations &
+export type OpenClawStateWorkerOperations = IngressWorkerOperations &
+  McpOAuthReadOperations &
   MessageControlWorkerOperations &
   CurrentConversationBindingWorkerOperations &
   McpOAuthWriteOperations &

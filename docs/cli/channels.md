@@ -86,6 +86,20 @@ The command reads existing local device authentication without creating an ident
 
 `channels status` does not support `--deep`; use `openclaw channels status --probe` for channel checks. The separate top-level `openclaw status --deep` command provides a broader status probe.
 
+## Exact retained intake metadata
+
+On the Gateway host, select the same local profile and inspect one known source event:
+
+```bash
+openclaw channels ingress inspect --channel discord --account default --event-id <message-id> --lane-key <exact-ingress-lane> --json
+```
+
+All four selectors are required. The reader uses existing local filesystem and shared-state lifecycle authority; it does not request Gateway `operator.admin`, grant access, or accept an arbitrary database path. It opens existing state read-only, without creating or migrating a store. A different lane refuses the read rather than exposing the event from another lane.
+
+The result includes only the matched identity, retained status (`pending`, `claimed`, `completed`, or `failed`), attempt count, and timestamps. Payloads, metadata, errors, and claim tokens are withheld. `store-absent` and `not-found` are distinct from `read-refused` and `scope-mismatch`. Absence is retention-limited and never permission to replay. A completed ingress disposition does not establish a downstream ticket, response delivery, or successful agent work. This command cannot replay or change an event.
+
+Ingress append and retention transactions execute through the existing shared-state worker. The caller retains its original authority through transaction admission and the commit grant. An uncertain worker append outcome is surfaced without another append attempt; existing durable drain and recovery owners remain responsible for any retained pending row.
+
 ## Inbound dead letters
 
 Inbound events that exhaust their retry policy remain in the shared state database for the queue's existing failed-entry retention period. Inspect one channel account with:

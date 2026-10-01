@@ -17,6 +17,7 @@ import { writeSubagentRunValuesInDatabase } from "../agents/subagents/registry/s
 import * as worktreeRegistry from "../agents/worktrees/registry-read.kernel.js";
 import { listAuditEventsInDatabase } from "../audit/audit-event-read.kernel.js";
 import { executeAuditWriterCommand } from "../audit/audit-event-writer.worker.js";
+import { executeIngressWorkerCommand } from "../channels/message/ingress-queue.worker.js";
 import { readClawInstallSchemaVersionRows } from "../claws/provenance-runtime-read.kernel.js";
 import { readSqliteDatabaseBloat } from "../commands/doctor-db-bloat.read.js";
 import { readWorkshopMigrationRecordsInDatabase } from "../commands/doctor-skill-workshop-read.kernel.js";
@@ -158,6 +159,9 @@ export function executeSharedStateCommand(
   open: () => OpenClawStateDatabase,
   hasNativeDatabase: boolean,
 ): Operations[keyof Operations]["output"] {
+  if (command.type === "ingress.enqueue" || command.type === "ingress.prune") {
+    return executeIngressWorkerCommand(open(), command);
+  }
   // Dispatch preparation has loaded this module; do not open or observe token state.
   if (command.type === "deviceAuth.prepare") {
     return undefined;
@@ -304,10 +308,7 @@ export function executeSharedStateCommand(
   if (isTaskRegistryWorkerCommand(command)) {
     return executeTaskRegistryCommand(
       command,
-      {
-        path: context.databasePath,
-        env: getSqliteWorkerStateContext().environment,
-      },
+      { path: context.databasePath, env: getSqliteWorkerStateContext().environment },
       open,
     );
   }

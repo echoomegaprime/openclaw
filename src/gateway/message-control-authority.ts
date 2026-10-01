@@ -35,7 +35,7 @@ type DenialCategory =
   | "released";
 
 /** Bounded categories only: underlying authority errors may contain private state. */
-export class MessageControlAuthorityDeniedError extends Error {
+class MessageControlAuthorityDeniedError extends Error {
   readonly code = "message_control_authority_denied";
 
   constructor(readonly category: DenialCategory) {

@@ -1,5 +1,5 @@
 /** Exact serialized request presented at the selected transport's handoff. */
-export type DiscordPhysicalHandoffRequest = Readonly<{
+type DiscordPhysicalHandoffRequest = Readonly<{
   method: "PATCH";
   path: string;
   body: string;

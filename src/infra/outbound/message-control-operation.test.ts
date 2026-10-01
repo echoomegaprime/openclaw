@@ -4,12 +4,12 @@ import { DatabaseSync } from "node:sqlite";
 import { afterAll, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type {
-  MessageControlStableBinding,
+  MessageControlAdmission,
   MessageControlExecution,
 } from "./message-control-operation.types.js";
 
 const temps = useAutoCleanupTempDirTracker(afterAll);
-const stable: MessageControlStableBinding = {
+const stable: MessageControlAdmission["stable"] = {
   version: 1,
   principal: { kind: "gateway-profile", profileId: "profile-1" },
   session: { kind: "sessionless" },

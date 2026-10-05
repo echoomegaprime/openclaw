@@ -91,10 +91,12 @@ async function withSessionEntriesFromStoreInWorker<T>(
 ): Promise<T> {
   const env = cloneEnvWithPlatformSemantics(input.env ?? process.env);
   env.OPENCLAW_STATE_DIR = resolveStateDir(env);
+  // Keep Windows case-insensitive lookup locally, but send plain data to workers.
+  const transferEnv = { ...env, OPENCLAW_STATE_DIR: env.OPENCLAW_STATE_DIR };
   const agentId = normalizeAgentId(input.agentId);
   const storePath = input.storePath;
   const read = {
-    env,
+    env: transferEnv,
     sessionKeys: [...new Set(input.sessionKeys)],
     lifecycleSessionKey: input.lifecycleSessionKey,
     projection: input.projection,
@@ -164,7 +166,7 @@ async function withSessionEntriesFromStoreInWorker<T>(
     }
     const registryRead = prepareOpenClawAgentDatabaseRegistrySnapshotRead({ env });
     return await withSessionHistoryWorkerReadCandidates(candidates, async (discovery) => {
-      const request = { agentId, storePath, env, candidates };
+      const request = { agentId, storePath, env: transferEnv, candidates };
       let resolved = await discovery.readStoreTarget({
         ...request,
         registeredDatabases: { status: "deferred" },

@@ -172,6 +172,11 @@ Light and REM phase hits recorded in SQLite-backed plugin state add a small rece
 
 When enabled, `memory-core` auto-manages one cron job for a full dreaming sweep, deduped across the primary runtime workspace and any configured agent workspaces so subagent workspace fan-out does not exclude the main agent's `DREAMS.md` and memory state.
 
+New managed jobs start enabled. Reconciliation preserves an existing job's
+operator pause or automatic failure stop, including its failure history, even
+when updating the cadence or other managed settings. After fixing the cause of
+an automatic stop, use `openclaw automations enable <job-id>` to resume that job.
+
 Dreaming completions share the [background work budget](/concepts/queue#background-work) with Skill Workshop and other plugin completions: at most three runs in total, with up to three available to `memory-core`. The sweep coordinator does not consume a completion slot while it waits for phase work. System busyness shows these runs together in the `background` row.
 
 An explicit multi-agent fleet needs an [ambient system owner](/gateway/config-agents/heartbeat-compaction-and-streaming#agents.defaults.systemagent) for this job. If logs report `Agent-less cron job has no resolvable owner`, choose an existing agent to own the sweep. For example, if that agent is `ops`:

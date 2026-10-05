@@ -222,9 +222,8 @@ function buildManagedDreamingPatch(
   if (normalizeOptionalString(job.description) !== desired.description) {
     patch.description = desired.description;
   }
-  if (job.enabled !== true) {
-    patch.enabled = true;
-  }
+  // Existing jobs keep scheduler safety stops and operator pauses. Only an
+  // explicit enable operation may resume them and clear their failure state.
 
   const scheduleKind = normalizeLowercaseStringOrEmpty(normalizeOptionalString(job.schedule?.kind));
   const scheduleExpr = normalizeOptionalString(job.schedule?.expr);

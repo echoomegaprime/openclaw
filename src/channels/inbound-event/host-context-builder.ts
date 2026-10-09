@@ -1,5 +1,6 @@
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import type { MsgContext } from "../../auto-reply/templating.js";
+import { ownDataValue } from "../message-access/admission-evidence-scope-key.js";
 import {
   bindHostChannelContextAdmissionEvidence,
   prepareHostChannelContextAdmissionEvidence,
@@ -12,10 +13,16 @@ type HostContextParams = {
   accountId?: string;
   channelIngress?: Parameters<typeof prepareHostChannelContextAdmissionEvidence>[0]["ingress"];
   sender: { id?: string | number | null };
-  route: { agentId: string; routeSessionKey: string; dispatchSessionKey?: string };
+  route: {
+    agentId: string;
+    routeSessionKey: string;
+    dispatchSessionKey?: string;
+    accountId?: string;
+  };
   reply: { nativeChannelId?: string };
-  conversation: { nativeChannelId?: string };
+  conversation: { nativeChannelId?: string; spaceId?: string };
   messageId?: string;
+  messageIdFull?: string;
   message: { inboundEventKind?: "user_request" | "room_event" };
 };
 type MaybePromise<T> = T | Promise<T>;
@@ -28,6 +35,18 @@ export function createHostChannelInboundEventContextBuilder<
   owner?: ChannelIngressHostOwner,
 ): (params: Params) => MaybePromise<Built> {
   return (params) => {
+    // Capture native identity before supplemental/media work can yield. The audit preparation
+    // below remains diagnostic evidence; this snapshot only fences the private producer seam.
+    const nativeFields = {
+      AccountId: params.route.accountId ?? params.accountId,
+      AgentId: params.route.agentId,
+      SessionKey: params.route.dispatchSessionKey ?? params.route.routeSessionKey,
+      NativeChannelId: params.reply.nativeChannelId ?? params.conversation.nativeChannelId,
+      SenderId: params.sender.id,
+      GroupSpace: params.conversation.spaceId,
+      MessageSid: params.messageId,
+      MessageSidFull: params.messageIdFull,
+    };
     const preparation = prepareHostChannelContextAdmissionEvidence({
       owner,
       channelId: params.channel,
@@ -40,6 +59,9 @@ export function createHostChannelInboundEventContextBuilder<
     const bindEvidence = (built: Built) => {
       if (owner?.channelId === params.channel && owner.isLive()) {
         bindChannelParticipantInput({
+          localChannelContextMatches: Object.entries(nativeFields).every(
+            ([key, value]) => ownDataValue(built, key) === value,
+          ),
           context: built,
           channelId: params.channel,
           ingress: params.channelIngress,

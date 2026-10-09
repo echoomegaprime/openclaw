@@ -159,6 +159,13 @@ export function captureOpenClawAgentDatabaseExecution(
     if (!captured) {
       return Promise.resolve();
     }
+    if (cleanupFailure) {
+      try {
+        log.debug("Retrying retained agent database cleanup", { phase: "cleanup-retry" });
+      } catch {
+        // Diagnostics must not interfere with the original owner's cleanup.
+      }
+    }
     const result = captured.close().then(
       () => {
         if (generation === captured) {
@@ -207,7 +214,11 @@ export function captureOpenClawAgentDatabaseExecution(
       assertCurrent();
     }
     if (cleanupFailure) {
-      throw cleanupFailure.error;
+      // Retry only the retained native owner's cleanup before admitting new work.
+      await closeNative();
+      assertCurrent();
+      source.assertCurrent();
+      assertCallerCurrent?.();
     }
     if (!generation) {
       for (let idle = executionState.idle; idle && idle !== owner; idle = executionState.idle) {
@@ -353,9 +364,6 @@ export function captureOpenClawAgentDatabaseExecution(
       };
     },
     async closeIdle() {
-      if (cleanupFailure) {
-        throw cleanupFailure.error;
-      }
       await closeNative();
       // A reborrow may have retained the owner or started its next native generation.
       if (borrowers === 0 && !generation) {

@@ -1,10 +1,29 @@
 // Pruning keeps durable ingress retention bounded without loading retained rows.
-import { describe, expect, it } from "vitest";
-import { trackSqliteStatementExecutions } from "../../../test/helpers/sqlite-statement-execution-counter.js";
+import { once } from "node:events";
+import { BroadcastChannel } from "node:worker_threads";
+import { describe, expect, it, vi } from "vitest";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { createTestIngressQueue, withTempState } from "./ingress-drain.test-helpers.js";
+
+vi.mock("../../infra/runtime-process-url.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../infra/runtime-process-url.js")>();
+  const { resolveRuntimeWorkerUrl } = await import("../../infra/runtime-worker-url.js");
+  return {
+    ...actual,
+    resolveRuntimeProcessEntrypointUrl: (
+      name: Parameters<typeof actual.resolveRuntimeProcessEntrypointUrl>[0],
+    ) =>
+      name === "sharedStateStore"
+        ? resolveRuntimeWorkerUrl({
+            currentModuleUrl: import.meta.url,
+            sourceWorkerName: "ingress-admission.worker.test-support",
+            distWorkerPath: "channels/message/ingress-admission.worker.test-support.js",
+          })
+        : actual.resolveRuntimeProcessEntrypointUrl(name),
+  };
+});
 
 type ChannelIngressTestDatabase = Pick<OpenClawStateKyselyDatabase, "channel_ingress_events">;
 
@@ -59,20 +78,22 @@ describe("channel ingress pruning", () => {
           }
         }
 
-        const { db } = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } });
-        const reads = trackSqliteStatementExecutions(db, ["candidates"], (sql) =>
-          sql.startsWith("select") && sql.includes('from "channel_ingress_events"')
-            ? "candidates"
-            : null,
-        );
+        const database = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } });
+        const { db } = database;
+        const rowCounts = new Int32Array(new SharedArrayBuffer(4));
+        const observation = new BroadcastChannel(`ingress-admission-probe:${database.path}`);
+        const armed = once(observation, "message");
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Node worker channel.
+        observation.postMessage({ rowCounts });
+        await armed;
         try {
           const pruneOptions = { [`${status}MaxEntries`]: 2 };
           expect(await queue.prune(pruneOptions)).toBe(518);
-          expect(reads.rowCounts.candidates).toBe(518);
+          expect(Atomics.load(rowCounts, 0)).toBe(518);
           expect(await queue.prune(pruneOptions)).toBe(0);
-          expect(reads.rowCounts.candidates).toBe(518);
+          expect(Atomics.load(rowCounts, 0)).toBe(518);
         } finally {
-          reads.restore();
+          observation.close();
         }
         expect(
           executeSqliteQuerySync(

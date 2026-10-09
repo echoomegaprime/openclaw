@@ -1,6 +1,9 @@
 // Discord plugin entrypoint registers its OpenClaw integration.
-import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
-import { registerDiscordActivities } from "./activities-api.js";
+import {
+  defineBundledChannelEntry,
+  loadBundledEntryExportSync,
+  type OpenClawPluginApi,
+} from "openclaw/plugin-sdk/channel-entry-contract";
 import { registerDiscordSubagentHooks } from "./subagent-hooks-api.js";
 import { registerDiscordTranscriptSourceProvider } from "./transcripts-source-api.js";
 
@@ -22,6 +25,10 @@ export default defineBundledChannelEntry({
     exportName: "inspectDiscordReadOnlyAccount",
   },
   registerFull(api) {
+    const registerDiscordActivities = loadBundledEntryExportSync<(api: OpenClawPluginApi) => void>(
+      import.meta.url,
+      { specifier: "./activities-api.js", exportName: "registerDiscordActivities" },
+    );
     registerDiscordActivities(api);
     registerDiscordSubagentHooks(api);
   },

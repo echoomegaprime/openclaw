@@ -1,9 +1,10 @@
 // Discord-style admin command registration for roles, channels, members, events, and moderation.
-import type { Command } from "commander";
+import { InvalidArgumentError, type Command } from "commander";
 import type { MessageCliHelpers } from "./helpers.js";
 
 const requiredOptions = {
   guild: ["--guild-id <id>", "Guild id"],
+  expectedBot: ["--expected-bot-id <id>", "Expected authenticated Discord bot user id"],
   user: ["--user-id <id>", "User id"],
   role: ["--role-id <id>", "Role id"],
   eventName: ["--event-name <name>", "Event name"],
@@ -31,6 +32,69 @@ export function registerMessageDiscordAdminCommands(message: Command, helpers: M
   }
 
   const role = message.command("role").description("Role actions");
+  const guild = message.command("guild").description("Guild actions");
+  const mediaFilter = guild.command("media-filter").description("Guild media-filter inspection");
+  const mediaFilterGet = register(
+    mediaFilter,
+    "get",
+    "Read the bound guild media filter",
+    "guild-media-filter-get",
+    ["guild", "expectedBot"],
+  );
+  // This inspection must never select an implicit default account.
+  mediaFilterGet.options.find((option) => option.long === "--account")?.makeOptionMandatory();
+  const setAllMembers = register(
+    mediaFilter,
+    "set-all-members",
+    "Set the bound guild media filter to all members",
+    "guild-media-filter-set-all-members",
+    ["guild", "expectedBot"],
+  );
+  setAllMembers.options.find((option) => option.long === "--account")?.makeOptionMandatory();
+  setAllMembers
+    .requiredOption(
+      "--expected-current <0|1|2>",
+      "Required current filter value",
+      (input: string) => {
+        if (input !== "0" && input !== "1" && input !== "2") {
+          throw new InvalidArgumentError("Expected current filter must be exactly 0, 1, or 2.");
+        }
+        return Number(input);
+      },
+    )
+    .requiredOption(
+      "--idempotency-key <key>",
+      "Stable operation key; never change it to retry an uncertain write",
+    )
+    .action((opts) =>
+      helpers.runMessageAction("guild-media-filter-set-all-members", {
+        ...opts,
+        controlMode: "apply",
+      }),
+    );
+  for (const [name, mode, description] of [
+    ["receipt", "read", "Read a retained operation receipt"],
+    [
+      "reconcile",
+      "reconcile",
+      "Record a fresh media-filter observation without retrying the write",
+    ],
+    ["cancel", "cancel", "Record cancellation intent without clearing an uncertain write"],
+  ] as const) {
+    const command = register(mediaFilter, name, description, "guild-media-filter-set-all-members", [
+      "guild",
+      "expectedBot",
+    ]);
+    command.options.find((option) => option.long === "--account")?.makeOptionMandatory();
+    command
+      .requiredOption("--operation-id <id>", "Existing operation ID in this principal's namespace")
+      .action((opts) =>
+        helpers.runMessageAction("guild-media-filter-set-all-members", {
+          ...opts,
+          controlMode: mode,
+        }),
+      );
+  }
   register(role, "info", "List roles", "role-info", ["guild"]);
   register(role, "add", "Add role to a member", "role-add", ["guild", "user", "role"]);
   register(role, "remove", "Remove role from a member", "role-remove", ["guild", "user", "role"]);

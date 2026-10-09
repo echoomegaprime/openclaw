@@ -19,6 +19,7 @@ import {
   readToolAllowlistIntersection,
 } from "../../agents/tool-policy.js";
 import { readChannelContextAdmissionEvidence } from "../../channels/message-access/admission-evidence.js";
+import { bindLocalChannelFollowup } from "../../channels/message-access/local-channel-principal.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import { conversationIdentityFromMsgContext } from "../../config/sessions/conversation-identity.js";
 import { resolveGroupSessionKey } from "../../config/sessions/group.js";
@@ -578,6 +579,12 @@ export async function executePreparedReplyRun(state: PreparedReplyRunAdmission) 
         : {}),
     },
   };
+  if (
+    bindLocalChannelFollowup(ctx, followupRun, cfg) ||
+    bindLocalChannelFollowup(sessionCtx, followupRun, cfg)
+  ) {
+    Object.assign(followupRun, { disableCollectBatching: true });
+  }
   const sourceReplyDeliveryRuntimeOptions = opts as SourceReplyDeliveryRuntimeOptions | undefined;
   const channelOwnerAuthority = getCommandOwnerAuthority(sessionCtx);
   if (command.senderIsOwner && channelOwnerAuthority) {

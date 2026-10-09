@@ -41,6 +41,30 @@ export const discordChannelConfigUiHints = {
     label: "Discord Guild Join Introduction",
     help: "Post one brief, room-specific introduction when the bot joins an allowed Discord guild (default: true). Account settings override the channel-wide setting.",
   },
+  "actions.guildMediaFilter": {
+    label: "Discord Guild Media Filter Controls",
+    help: "Enable media-filter inspection and operation receipts (default: false). Requires an exact account, bot, and guild binding. Fixed all-members writes require their separate opt-in and current host authorization.",
+  },
+  guildMediaFilter: {
+    label: "Discord Guild Media Filter Binding",
+    help: "Trusted account/bot/guild binding for media-filter inspection and controlled all-members writes. Existing guild policies and management permissions apply.",
+  },
+  "guildMediaFilter.accountId": {
+    label: "Media Filter Account ID",
+    help: "Exact existing Discord account ID. Inherited bindings cannot authorize a different account.",
+  },
+  "guildMediaFilter.botId": {
+    label: "Media Filter Bot User ID",
+    help: "Expected numeric bot user ID, checked against the authenticated account before guild inspection.",
+  },
+  "guildMediaFilter.guildIds": {
+    label: "Media Filter Guild IDs",
+    help: "Exact numeric guild IDs eligible for inspection and separately enabled all-members writes. Wildcards are not supported.",
+  },
+  "guildMediaFilter.allowSetAllMembers": {
+    label: "Allow All-Members Media Filter Writes",
+    help: "Enable only the fixed all-members media-filter operation (default: false). Requires the current host operation capability and bot/requester management checks. Receipt inspection remains available when disabled.",
+  },
   proxy: {
     label: "Discord Proxy URL",
     help: "Proxy URL for Discord gateway + API requests (app-id lookup and allowlist resolution). Set per account via channels.discord.accounts.<id>.proxy.",

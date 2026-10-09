@@ -5,6 +5,7 @@ import {
   AgentDeletionCommitUncertainError,
 } from "../../agents/agent-lifecycle-registry.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
+import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import {
   type CronActiveJobMarker,
   noteActiveCronJobRemoval,
@@ -380,10 +381,39 @@ export async function removeStaleJobFamily(
   family: { declarationKey: string; name: string; ownerPluginTag: string },
   opts?: { commitGuard?: () => void },
 ): Promise<number> {
+  // Capture the exact store generation and input before joining the shared FIFO.
+  const context = captureOpenClawStateWorkerContext();
+  const capturedFamily = { ...family };
+  const assertCurrent = opts?.commitGuard;
   return await locked(state, async () => {
+    context.admission.assertCurrent();
     await ensureLoadedForOperation(state);
-    opts?.commitGuard?.();
-    return removeStaleCronJobFamilyRows(state.deps.storePath, family);
+    let removed: number;
+    try {
+      removed = await removeStaleCronJobFamilyRows(state.deps.storePath, capturedFamily, {
+        context,
+        assertCurrent,
+      });
+    } catch (error) {
+      try {
+        state.deps.log.warn(
+          { operation: "cron.job-family-adoption", outcome: "unverified" },
+          "cron: stale job family cleanup did not return a committed result",
+        );
+      } catch {
+        // Optional diagnostics must preserve the original worker failure.
+      }
+      throw error;
+    }
+    try {
+      state.deps.log.debug(
+        { operation: "cron.job-family-adoption", removed },
+        "cron: stale job family cleanup settled",
+      );
+    } catch {
+      // A diagnostic failure cannot turn a committed result into a retry signal.
+    }
+    return removed;
   });
 }
 

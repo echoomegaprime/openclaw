@@ -12,6 +12,7 @@ import {
 } from "../../state/openclaw-state-db.js";
 import type { CronStoreWorkerOperations } from "./load-worker.types.js";
 import { loadMutableCronStoreInWorker } from "./load.worker.js";
+import { deleteStaleCronJobFamilyRows, type CronJobFamilyIdentity } from "./row-codec.js";
 import {
   bindCronRunReceiptExecutionInDatabase,
   ensureCronRunReceiptSchema,
@@ -46,6 +47,10 @@ export function prepareCronStateWorkerCommand(type: PropertyKey): Promise<void> 
 export type CronStateWorkerOperations = CronStoreWorkerOperations &
   CronRuntimeWorkerOperations &
   CronStoreSaveWorkerOperations & {
+    "cron.removeStaleFamily": {
+      input: { storeKey: string; family: CronJobFamilyIdentity };
+      output: number;
+    };
     "cron.initializeRunReceipts": {
       input: Record<string, never>;
       output: void;
@@ -69,6 +74,7 @@ export function isCronStateWorkerCommand(command: {
     case "cron.save":
     case "cron.saveChanges":
     case "cron.bindReceiptExecution":
+    case "cron.removeStaleFamily":
       return true;
     default:
       return false;
@@ -80,6 +86,21 @@ export function executeCronStateCommand(
   database: OpenClawStateDatabase,
 ): CronStateWorkerOperations[keyof CronStateWorkerOperations]["output"] {
   switch (command.type) {
+    case "cron.removeStaleFamily":
+      return runOpenClawStateWriteTransaction(
+        ({ db }) => {
+          requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
+          const removed = deleteStaleCronJobFamilyRows(
+            db,
+            command.input.storeKey,
+            command.input.family,
+          );
+          requestSqliteWorkerOperationAdmission({ stage: "commit", facts: undefined });
+          return removed;
+        },
+        { database, path: database.path, env: getSqliteWorkerStateContext().environment },
+        { operationLabel: "cron.job-family-adoption" },
+      );
     case "cron.loadMutable":
       return loadMutableCronStoreInWorker(database, command.input.storeKey);
     case "cron.repairRun":

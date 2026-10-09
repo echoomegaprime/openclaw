@@ -1,8 +1,35 @@
+import path from "node:path";
 import { isHttpsUrl, isHttpUrl } from "@openclaw/net-policy/url-protocol";
 import { z } from "zod";
 import { sensitive } from "./zod-schema.sensitive.js";
 
 const HttpUrlSchema = z.string().url().refine(isHttpUrl, "Expected http:// or https:// URL");
+
+// Exact owner-configured tuples, never wildcard grants or model-selected destinations.
+const LocalChannelScopeIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.:@/-]*$/);
+const McpLocalChannelContextSchema = z.strictObject({
+  version: z.literal(1),
+  scopes: z
+    .array(
+      z.strictObject({
+        agentId: LocalChannelScopeIdSchema,
+        provider: LocalChannelScopeIdSchema,
+        accountId: LocalChannelScopeIdSchema,
+        spaceId: LocalChannelScopeIdSchema,
+        channelId: LocalChannelScopeIdSchema,
+      }),
+    )
+    .min(1)
+    .max(64)
+    .refine(
+      (scopes) => new Set(scopes.map((scope) => JSON.stringify(scope))).size === scopes.length,
+      "Local channel scopes must be unique",
+    ),
+});
 
 const McpOAuthClientMetadataUrlSchema = z
   .string()
@@ -37,6 +64,7 @@ export const McpServerSchema = z
     connectionTimeoutMs: z.number().finite().positive().optional(),
     requestTimeoutMs: z.number().finite().positive().optional(),
     supportsParallelToolCalls: z.boolean().optional(),
+    localChannelContext: McpLocalChannelContextSchema.optional(),
     auth: z.literal("oauth").optional(),
     oauth: z
       .strictObject({
@@ -72,6 +100,28 @@ export const McpServerSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
+    if (
+      data.localChannelContext &&
+      (data.transport !== "stdio" ||
+        typeof data.command !== "string" ||
+        !path.isAbsolute(data.command) ||
+        data.command.includes("\0") ||
+        !Array.isArray(data.args) ||
+        data.args.some((arg) => arg.includes("\0")) ||
+        typeof data.cwd !== "string" ||
+        !path.isAbsolute(data.cwd) ||
+        data.cwd.includes("\0") ||
+        data.url !== undefined ||
+        data.auth !== undefined ||
+        data.oauth !== undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["localChannelContext"],
+        message:
+          "Local channel context requires explicit stdio, absolute command/cwd and literal args",
+      });
+    }
     // This schema is .catchall(z.unknown()) (open-world server options), so
     // unknown keys survive into this refine; retired aliases are rejected here.
     for (const key of [

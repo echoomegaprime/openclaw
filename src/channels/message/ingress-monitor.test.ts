@@ -8,7 +8,7 @@ import {
   runWithGatewayIndependentRootWorkAdmission,
   runWithGatewayIndependentRootWorkContinuation,
 } from "../../process/gateway-work-admission.js";
-import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import { createChannelIngressError } from "./ingress-errors.js";
 import {
   CHANNEL_INGRESS_RETENTION_DEFAULTS,
@@ -36,7 +36,7 @@ async function withQueue<T>(
       createChannelIngressQueue<StoredEvent>({ channelId: "test", accountId: "a", stateDir }),
     );
   } finally {
-    closeOpenClawStateDatabaseForTest();
+    await closeOpenClawStateDatabaseAsync();
   }
 }
 
@@ -49,9 +49,9 @@ async function waitForAbort(signal: AbortSignal): Promise<void> {
   });
 }
 
-afterEach(() => {
+afterEach(async () => {
   resetGatewayWorkAdmission();
-  closeOpenClawStateDatabaseForTest();
+  await closeOpenClawStateDatabaseAsync();
   vi.restoreAllMocks();
 });
 

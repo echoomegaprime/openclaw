@@ -299,7 +299,9 @@ export async function executeGatewayAction(
     normalizeOptionalString(ctx.params.idempotencyKey),
   );
   const callerOwnsTerminalReceipt =
-    ctx.gateway.terminalSourceReplyReceiptOwner === "caller" && ctx.input.sourceReplyFinal === true;
+    params.action !== "guild-media-filter-set-all-members" &&
+    ctx.gateway.terminalSourceReplyReceiptOwner === "caller" &&
+    ctx.input.sourceReplyFinal === true;
   // Resolve local capability/auth preflight before arming a durable send intent.
   // A failure here proves the RPC never reached the gateway.
   const requestContext = {

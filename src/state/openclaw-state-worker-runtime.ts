@@ -17,6 +17,7 @@ import { writeSubagentRunValuesInDatabase } from "../agents/subagents/registry/s
 import * as worktreeRegistry from "../agents/worktrees/registry-read.kernel.js";
 import { listAuditEventsInDatabase } from "../audit/audit-event-read.kernel.js";
 import { executeAuditWriterCommand } from "../audit/audit-event-writer.worker.js";
+import { executeIngressWorkerCommand } from "../channels/message/ingress-queue.worker.js";
 import { readClawInstallSchemaVersionRows } from "../claws/provenance-runtime-read.kernel.js";
 import { readSqliteDatabaseBloat } from "../commands/doctor-db-bloat.read.js";
 import { readWorkshopMigrationRecordsInDatabase } from "../commands/doctor-skill-workshop-read.kernel.js";
@@ -52,6 +53,7 @@ import {
   executeCurrentConversationBindingCommand,
   readCurrentConversationBindingSelectionInWorker,
 } from "../infra/outbound/current-conversation-bindings.worker.js";
+import * as messageControl from "../infra/outbound/message-control-operation.worker.js";
 import { executePromotionCommand } from "../infra/promotions-feed.worker.js";
 import { isApnsRegistrationWorkerCommand } from "../infra/push-apns-store.worker-contract.js";
 import { executeApnsRegistrationCommand } from "../infra/push-apns-store.worker.js";
@@ -157,12 +159,22 @@ export function executeSharedStateCommand(
   open: () => OpenClawStateDatabase,
   hasNativeDatabase: boolean,
 ): Operations[keyof Operations]["output"] {
+  if (command.type === "ingress.enqueue" || command.type === "ingress.prune") {
+    return executeIngressWorkerCommand(open(), command);
+  }
   // Dispatch preparation has loaded this module; do not open or observe token state.
   if (command.type === "deviceAuth.prepare") {
     return undefined;
   }
   if (isMcpOAuthWorkerCommand(command)) {
     return executeMcpOAuthWorkerCommand(open(), command);
+  }
+  if (messageControl.isMessageControlCommand(command)) {
+    return messageControl.executeMessageControlCommand(command, {
+      database: open(),
+      path: context.databasePath,
+      env: getSqliteWorkerStateContext().environment,
+    });
   }
   if (command.type === "execApprovals.commitAuthorizations" || isOperatorApprovalCommand(command)) {
     const databaseOptions = {
@@ -296,10 +308,7 @@ export function executeSharedStateCommand(
   if (isTaskRegistryWorkerCommand(command)) {
     return executeTaskRegistryCommand(
       command,
-      {
-        path: context.databasePath,
-        env: getSqliteWorkerStateContext().environment,
-      },
+      { path: context.databasePath, env: getSqliteWorkerStateContext().environment },
       open,
     );
   }

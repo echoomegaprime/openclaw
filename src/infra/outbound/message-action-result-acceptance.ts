@@ -67,6 +67,11 @@ export async function annotateSourceDelivery<T extends MessageActionResult>(
   ctx: ResolvedActionContext,
   replyToIsExplicit: boolean,
 ): Promise<T> {
+  // Guild control has its own durable outcome and delivers no source message.
+  // Optional message annotation must not replace that already-returned outcome.
+  if (result.action === "guild-media-filter-set-all-members") {
+    return result;
+  }
   // Current-source identity comes from the authorized route and delivery receipt,
   // not the reply mode; automatic runs also use this marker to avoid false fallbacks.
   const authorization = ctx.input.messageActionAuthorization;

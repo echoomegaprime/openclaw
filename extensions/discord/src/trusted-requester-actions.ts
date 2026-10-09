@@ -2,6 +2,8 @@
 import type { ChannelMessageActionName } from "openclaw/plugin-sdk/channel-contract";
 
 const trustedRequesterGuildAdminActions = new Set<ChannelMessageActionName>([
+  "guild-media-filter-get",
+  "guild-media-filter-set-all-members",
   "emoji-upload",
   "sticker-upload",
   "role-add",

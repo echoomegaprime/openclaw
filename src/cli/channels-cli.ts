@@ -203,6 +203,24 @@ export async function registerChannelsCli(
     });
 
   channels
+    .command("ingress")
+    .description("Inspect exact retained intake metadata in the selected local profile")
+    .command("inspect")
+    .description("Read one event disposition without payload or replay")
+    .requiredOption("--channel <name>", "Exact channel plugin")
+    .requiredOption("--account <id>", "Exact account")
+    .requiredOption("--event-id <id>", "Exact source event ID")
+    .requiredOption("--lane-key <key>", "Exact expected ingress lane")
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      await runChannelsCommand(async () => {
+        const { channelsIngressInspectCommand } =
+          await import("../commands/channels/ingress-inspect.js");
+        await channelsIngressInspectCommand(opts, defaultRuntime);
+      });
+    });
+
+  channels
     .command("status")
     .description("Show channel status (use openclaw status --deep for a full connection check)")
     .option("--channel <name>", `Only show one channel (${formatCliChannelOptions(["all"])})`)

@@ -4,6 +4,7 @@ import { danger } from "openclaw/plugin-sdk/runtime-env";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { ResolvedDiscordAccount } from "./accounts.js";
+import { retainDiscordSynchronousFetch } from "./internal/rest-physical-handoff.js";
 
 function resolveDiscordProxyUrl(
   account: Pick<ResolvedDiscordAccount, "config">,
@@ -20,7 +21,9 @@ function resolveDiscordProxyFetchByUrl(
   proxyUrl: string | undefined,
   runtime?: Pick<RuntimeEnv, "error">,
 ): typeof fetch | undefined {
-  return withValidatedDiscordProxy(proxyUrl, runtime, (proxy) => makeProxyFetch(proxy));
+  return withValidatedDiscordProxy(proxyUrl, runtime, (proxy) =>
+    retainDiscordSynchronousFetch(makeProxyFetch(proxy)),
+  );
 }
 
 export function resolveDiscordProxyFetchForAccount(

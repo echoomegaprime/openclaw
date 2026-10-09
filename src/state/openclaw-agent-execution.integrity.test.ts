@@ -109,7 +109,12 @@ it.each([
   const env = { OPENCLAW_STATE_DIR: fs.realpathSync(tempDirs.make("agent-native-integrity-")) };
   const database = openOpenClawAgentDatabase({ agentId: "main", env });
   expect(getOpenClawAgentDatabaseValidation(database)).toBeDefined();
-  counter.path = database.path;
+  // Observe the native spelling, including SQLite's Windows long-path namespace.
+  const nativeLocation = database.db.location();
+  if (typeof nativeLocation !== "string") {
+    throw new Error("Native integrity fixture requires a filesystem-backed database");
+  }
+  counter.path = nativeLocation;
   counter.checks = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
   const context = captureOpenClawStateWorkerContext({ env });
   const closedHost = proof.startsWith("closed-host");

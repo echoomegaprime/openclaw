@@ -20,6 +20,7 @@ type ScheduledRequest<TData> = {
   query?: RequestQuery;
   routeKey: string;
   retryCount: number;
+  rateLimitRetryPolicy?: "never";
   resolve: (value?: unknown) => void;
   reject: (reason?: unknown) => void;
 };
@@ -126,6 +127,7 @@ export class RestScheduler<TData> {
     data?: TData;
     priority: RequestPriority;
     query?: RequestQuery;
+    rateLimitRetryPolicy?: "never";
   }): Promise<unknown> {
     if (this.queuedRequests >= this.options.maxQueueSize) {
       throw new Error("Discord request queue is full");
@@ -534,6 +536,7 @@ export class RestScheduler<TData> {
   private requeueRateLimitedRequest(queued: ScheduledRequest<TData>): boolean {
     if (
       queued.generation !== this.queueGeneration ||
+      queued.rateLimitRetryPolicy === "never" ||
       queued.retryCount >= this.maxRateLimitRetries
     ) {
       return false;

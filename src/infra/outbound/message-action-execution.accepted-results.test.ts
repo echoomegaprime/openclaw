@@ -54,6 +54,40 @@ describe("accepted results through registered message actions", () => {
   afterEach(() => resetPluginRuntimeStateForTest());
   afterAll(async () => tempHome.restore());
 
+  it("preserves a fixed control receipt when optional source annotation is unavailable", async () => {
+    const action = "guild-media-filter-set-all-members";
+    const plugin = registerPlugin();
+    const result: MessageActionResult = {
+      kind: "action",
+      channel: "discord",
+      action,
+      handledBy: "plugin",
+      dryRun: false,
+      payload: { ok: true, operationId: "retained-control", atomicCas: false },
+    };
+    const annotationGuard = vi.fn(() => {
+      throw closed;
+    });
+    const ctx: ResolvedActionContext = {
+      cfg: {},
+      params: {},
+      channel: "discord",
+      channelPlugin: plugin,
+      accountId: "default",
+      mediaAccess: { localRoots: [] },
+      dryRun: false,
+      input: {
+        cfg: {},
+        action,
+        params: {},
+        messageActionAuthorization: authorization,
+        assertDirectAdapterHandoff: annotationGuard,
+      },
+    };
+    expect(await annotateSourceDelivery(result, ctx, false)).toBe(result);
+    expect(annotationGuard).not.toHaveBeenCalled();
+  });
+
   it.each(["sent", "partial_failed"] as const)(
     "keeps the matched core %s result accurate while its caller stays current",
     async (deliveryStatus) => {

@@ -97,6 +97,7 @@ type GatewayRequestContextRuntime = Pick<
 > &
   Pick<
     GatewayCoreRuntime,
+    | "bootId"
     | "getSessionRowProjection"
     | "refreshGatewayHealthSnapshotWithRuntime"
     | "hasTalkNodeConnected"
@@ -246,6 +247,7 @@ export function createGatewayRequestContext(
   const context: GatewayRequestContext = {
     trackExecution: (run) => connectionWork.track(run),
     deps: runtime.deps,
+    gatewayInstanceId: runtime.bootId,
     configRevisionProjector: params.configRevisionProjector,
     // Keep cron reads live so config hot reload can swap cron/store state without rebuilding
     // every handler closure that already holds this request context.

@@ -31,6 +31,7 @@ const channelsDeadLettersMocks = vi.hoisted(() => ({
   ),
 }));
 const channelsResolveCommandMock = vi.hoisted(() => vi.fn(async () => undefined));
+const channelsIngressInspectCommandMock = vi.hoisted(() => vi.fn(async () => undefined));
 const channelsCapabilitiesCommandMock = vi.hoisted(() => vi.fn(async () => undefined));
 const channelsRemoveCommandMock = vi.hoisted(() => vi.fn(async () => undefined));
 const channelAuthMocks = vi.hoisted(() => ({
@@ -60,6 +61,52 @@ vi.mock("../commands/channels.js", () => ({
 }));
 
 vi.mock("../commands/channels/dead-letters.js", () => channelsDeadLettersMocks);
+vi.mock("../commands/channels/ingress-inspect.js", () => ({
+  channelsIngressInspectCommand: channelsIngressInspectCommandMock,
+}));
+
+it("registers exact local ingress inspection without replay or database path options", async () => {
+  const program = new Command().name("openclaw");
+  await registerChannelsCli(program);
+  await program.parseAsync(
+    [
+      "channels",
+      "ingress",
+      "inspect",
+      "--channel",
+      "discord",
+      "--account",
+      "default",
+      "--event-id",
+      "1001",
+      "--lane-key",
+      "channel:2001",
+      "--json",
+    ],
+    { from: "user" },
+  );
+  expect(channelsIngressInspectCommandMock).toHaveBeenCalledWith(
+    {
+      channel: "discord",
+      account: "default",
+      eventId: "1001",
+      laneKey: "channel:2001",
+      json: true,
+    },
+    runtimeMock,
+  );
+  const ingress = program.commands
+    .find((command) => command.name() === "channels")
+    ?.commands.find((command) => command.name() === "ingress");
+  expect(ingress?.commands.map((command) => command.name())).toEqual(["inspect"]);
+  expect(ingress?.commands[0]?.options.map((option) => option.long)).toEqual([
+    "--channel",
+    "--account",
+    "--event-id",
+    "--lane-key",
+    "--json",
+  ]);
+});
 
 vi.mock("./channel-auth.js", () => channelAuthMocks);
 

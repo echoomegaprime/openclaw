@@ -55,6 +55,8 @@ const ROOT_TEST_ENTRY_GLOBS = [
   "test/scripts/pr-review-artifacts.node.mjs!",
   // tsgo:test:root checks these compile-only contracts without runtime imports.
   "test/type-contracts/**/*.ts!",
+  // The stale-family cron test loads this SQLite backend through its worker URL.
+  "src/cron/stale-family.worker.test-support.ts!",
   // The module-generation test launches this Bun regression directly from its source path.
   "src/plugins/plugin-module-generation.bun.test-support.ts!",
   // The plugin artifact suite launches these Node tests with the native tooling preload.

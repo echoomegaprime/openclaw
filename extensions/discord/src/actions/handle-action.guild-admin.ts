@@ -32,6 +32,7 @@ type Ctx = Pick<
   | "senderIsOwner"
   | "toolContext"
   | "assertDirectAdapterHandoff"
+  | "controlOperation"
 >;
 
 function readDiscordRequesterSenderId(ctx: Ctx): string | undefined {
@@ -82,7 +83,68 @@ export async function tryHandleDiscordMessageActionGuildAdmin(params: {
   const { ctx, resolveChannelId, readPolicyOptions, actionOptions } = params;
   const { action, params: actionParams, cfg } = ctx;
   const accountId = ctx.accountId ?? readStringParam(actionParams, "accountId");
+  if (action === "guild-media-filter-set-all-members") {
+    if (!ctx.controlOperation) {
+      throw new Error("Discord media-filter control requires a host capability.");
+    }
+    const explicitAccountId = readStringParam(actionParams, "accountId", { required: true });
+    if (ctx.accountId && ctx.accountId !== explicitAccountId) {
+      throw new Error("Discord media-filter account binding does not match the selected account.");
+    }
+    const fromDiscord = ctx.toolContext?.currentChannelProvider?.trim().toLowerCase() === "discord";
+    const requesterSenderId = fromDiscord
+      ? normalizeOptionalString(ctx.requesterSenderId)
+      : undefined;
+    if (fromDiscord && (!requesterSenderId || ctx.requesterAccountId !== explicitAccountId)) {
+      throw new Error("Discord media-filter control requires a matching trusted requester.");
+    }
+    const expectedCurrent = readNonNegativeIntegerParam(actionParams, "expectedCurrent");
+    const operationId = readStringParam(actionParams, "operationId");
+    return await handleDiscordAction(
+      {
+        action: "guildMediaFilterSetAllMembers",
+        accountId: explicitAccountId,
+        guildId: readStringParam(actionParams, "guildId", { required: true }),
+        expectedBotId: readStringParam(actionParams, "expectedBotId", { required: true }),
+        ...(actionParams.controlMode !== undefined
+          ? { controlMode: actionParams.controlMode }
+          : {}),
+        ...(operationId ? { operationId } : {}),
+        ...(expectedCurrent !== undefined ? { expectedCurrent } : {}),
+      },
+      cfg,
+      {
+        ...readPolicyOptions,
+        controlOperation: ctx.controlOperation,
+        ...(requesterSenderId ? { controlRequesterSenderId: requesterSenderId } : {}),
+      },
+    );
+  }
   const senderUserId = readDiscordRequesterSenderId(ctx);
+
+  if (action === "guild-media-filter-get") {
+    const explicitAccountId = readStringParam(actionParams, "accountId", { required: true });
+    if (ctx.accountId && ctx.accountId !== explicitAccountId) {
+      throw new Error("Discord media-filter account binding does not match the selected account.");
+    }
+    if (
+      ctx.toolContext?.currentChannelProvider?.trim().toLowerCase() === "discord" &&
+      !senderUserId
+    ) {
+      throw new Error("Discord media-filter reads require a trusted Discord sender identity.");
+    }
+    return await handleDiscordAction(
+      {
+        action: "guildMediaFilterGet",
+        accountId: explicitAccountId,
+        guildId: readStringParam(actionParams, "guildId", { required: true }),
+        expectedBotId: readStringParam(actionParams, "expectedBotId", { required: true }),
+        ...senderParam(senderUserId),
+      },
+      cfg,
+      readPolicyOptions,
+    );
+  }
 
   if (action === "member-info") {
     const userId = readStringParam(actionParams, "userId", { required: true });

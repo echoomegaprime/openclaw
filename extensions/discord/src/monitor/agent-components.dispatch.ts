@@ -10,6 +10,7 @@ import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import { logError } from "openclaw/plugin-sdk/logging-core";
 import { resolveMarkdownTableMode } from "openclaw/plugin-sdk/markdown-table-runtime";
 import { getAgentScopedMediaLocalRoots } from "openclaw/plugin-sdk/media-runtime";
+import type { FinalizedMsgContext } from "openclaw/plugin-sdk/reply-runtime";
 import { createNonExitingRuntime, logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { resolveDiscordMaxLinesPerMessage } from "../accounts.js";
 import { createDiscordRestClient } from "../client.js";
@@ -34,6 +35,7 @@ import {
   buildDiscordGroupSystemPrompt,
   buildDiscordInboundAccessContext,
 } from "./inbound-context.js";
+import { discordIngressIdentity } from "./ingress-identity.js";
 import { buildDirectLabel, buildGuildLabel } from "./reply-context.js";
 import { deliverDiscordReply } from "./reply-delivery.js";
 import { buildDiscordConversationRouteContext } from "./route-resolution.js";
@@ -94,6 +96,15 @@ export async function dispatchDiscordComponentEvent(params: {
   routeOverrides?: { sessionKey?: string; agentId?: string; accountId?: string };
 }): Promise<void> {
   const { ctx, interaction, interactionCtx, channelCtx, guildInfo, eventText } = params;
+  // Snapshot the authenticated interaction before asynchronous context work. The shared
+  // form's message id is a reply reference, never this submission's identity.
+  const native = Object.freeze({
+    eventId: interaction.rawData.id,
+    senderId: interactionCtx.userId,
+    accountId: ctx.accountId,
+    channelId: interactionCtx.channelId,
+    spaceId: interactionCtx.rawGuildId,
+  });
   const runtime = ctx.runtime ?? createNonExitingRuntime();
   const route = resolveAgentComponentRoute({
     ctx,
@@ -190,7 +201,7 @@ export async function dispatchDiscordComponentEvent(params: {
     };
   })();
 
-  const ctxPayload = finalizeInboundContext({
+  let ctxPayload: FinalizedMsgContext & { From: string; To: string } = finalizeInboundContext({
     Body: combinedBody,
     BodyForAgent: eventText,
     RawBody: eventText,
@@ -238,6 +249,93 @@ export async function dispatchDiscordComponentEvent(params: {
     OriginatingTo:
       resolveDiscordComponentOriginatingTo(interactionCtx) ?? `channel:${interactionCtx.channelId}`,
   });
+
+  if (ctx.channelRuntime && accountId === native.accountId) {
+    if (ctx.isPolicyCurrent?.() === false) {
+      throw new Error("discord component policy expired");
+    }
+    // The component handler already checked current room/member and form access.
+    // Reuse the host's native identity handoff; this does not grant command-owner
+    // or moderator authority. The protected MCP scope remains a separate opt-in.
+    const allowedSender = [`user:${native.senderId}`];
+    const channelIngress = await ctx.channelRuntime.inbound.ingress
+      .createResolver({
+        channelId: "discord",
+        accountId: native.accountId,
+        identity: discordIngressIdentity,
+        useDefaultPairingStore: false,
+      })
+      .message({
+        subject: { stableId: native.senderId, aliases: { participantKind: "user" } },
+        conversation: {
+          kind: chatType,
+          id: native.channelId,
+          ...(channelCtx.isThread
+            ? { parentId: channelCtx.parentId, threadId: native.channelId }
+            : {}),
+        },
+        contextBinding: {
+          agentId,
+          sessionKey,
+          nativeChannelId: native.channelId,
+          messageId: native.eventId,
+          inboundEventKind: "user_request",
+        },
+        dmPolicy: "allowlist",
+        groupPolicy: "allowlist",
+        allowFrom: allowedSender,
+        groupAllowFrom: allowedSender,
+        event: { mayPair: false },
+      });
+    if (ctx.isPolicyCurrent?.() === false) {
+      throw new Error("discord component policy expired");
+    }
+    if (channelIngress.ingress.admission !== "dispatch") {
+      return;
+    }
+    ctxPayload = ctx.channelRuntime.inbound.buildContext({
+      channel: "discord",
+      accountId: native.accountId,
+      channelIngress,
+      messageId: native.eventId,
+      timestamp,
+      from: ctxPayload.From,
+      sender: {
+        id: native.senderId,
+        name: senderName,
+        username: senderUsername,
+        tag: senderTag,
+        roles: interactionCtx.memberRoleIds,
+      },
+      conversation: {
+        kind: chatType,
+        id: native.channelId,
+        nativeChannelId: native.channelId,
+        spaceId: native.spaceId,
+      },
+      route: { agentId, routeSessionKey: sessionKey },
+      reply: { to: ctxPayload.To },
+      message: {
+        rawBody: eventText,
+        body: combinedBody,
+        bodyForAgent: eventText,
+        commandBody: eventText,
+        inboundEventKind: "user_request",
+      },
+      commandTurn: ctxPayload.CommandTurn,
+      // Preserve ordinary component formatting/routing while binding native identity outside text.
+      extra: {
+        ...ctxPayload,
+        AccountId: native.accountId,
+        SenderId: native.senderId,
+        MessageSid: native.eventId,
+        GroupSpace: native.spaceId,
+      },
+    });
+    if (ctx.isPolicyCurrent?.() === false) {
+      throw new Error("discord component policy expired");
+    }
+  }
 
   const deliverTarget = `channel:${interactionCtx.channelId}`;
   const typingChannelId = interactionCtx.channelId;

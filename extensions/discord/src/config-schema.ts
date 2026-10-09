@@ -279,6 +279,7 @@ const DiscordAccountSchemaBase = z
         search: z.boolean().optional(),
         memberInfo: z.boolean().optional(),
         roleInfo: z.boolean().optional(),
+        guildMediaFilter: z.boolean().optional(),
         roles: z.boolean().optional(),
         channelInfo: z.boolean().optional(),
         voiceStatus: z.boolean().optional(),
@@ -292,6 +293,15 @@ const DiscordAccountSchemaBase = z
     thread: DiscordThreadSchema.optional(),
     dm: DiscordDmSchema.optional(),
     guilds: z.record(z.string(), DiscordGuildSchema.optional()).optional(),
+    guildMediaFilter: z
+      .object({
+        accountId: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
+        botId: DiscordSnowflakeStringSchema,
+        guildIds: z.array(DiscordSnowflakeStringSchema).min(1),
+        allowSetAllMembers: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     execApprovals: buildChannelExecApprovalsSchema(DiscordIdSchema, {
       cleanupAfterResolve: z.boolean().optional(),
     }),

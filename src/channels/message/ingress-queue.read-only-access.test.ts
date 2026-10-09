@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
+import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.js";
 import {
   createChannelIngressQueue,
   listChannelIngressQueueAccountIdsReadOnly,
@@ -45,7 +45,7 @@ describe("read-only listing access", () => {
         stateDir,
       }).enqueue("evt-1", { text: "hello" });
       await fs.access(sqlitePath);
-      closeOpenClawStateDatabaseForTest();
+      await closeOpenClawStateDatabaseAsync();
 
       const after = createChannelIngressQueue<{ text: string }>({
         channelId: "line",
@@ -58,7 +58,7 @@ describe("read-only listing access", () => {
         await listChannelIngressQueueAccountIdsReadOnly({ channelId: "line", stateDir }),
       ).toEqual(["default"]);
     } finally {
-      closeOpenClawStateDatabaseForTest();
+      await closeOpenClawStateDatabaseAsync();
       await fs.rm(stateDir, { recursive: true, force: true });
     }
   });

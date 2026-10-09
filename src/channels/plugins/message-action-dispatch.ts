@@ -104,6 +104,9 @@ const CHANNEL_MESSAGE_ACTION_READ_POLICIES = {
   "sticker-search": BUNDLED_CURRENT_CONTEXT_CACHE_READ,
   "member-info": CONVERSATION_READ,
   "role-info": CONVERSATION_READ,
+  "guild-media-filter-get": CONVERSATION_READ,
+  // The mutation and its receipt modes also need the normal provider guild gate.
+  "guild-media-filter-set-all-members": CONVERSATION_READ,
   "emoji-list": CONVERSATION_READ,
   "emoji-upload": NO_CONVERSATION_READ,
   "sticker-upload": NO_CONVERSATION_READ,
@@ -160,6 +163,7 @@ const FENCED_PROVIDER_READ_ACTIONS: ReadonlySet<string> = new Set<ChannelMessage
   "permissions",
   "member-info",
   "role-info",
+  "guild-media-filter-get",
   "emoji-list",
   "channel-list",
   "voice-status",

@@ -1,6 +1,7 @@
 import { inspect } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { captureChannelReadAuthority } from "openclaw/plugin-sdk/fetch-runtime";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import {
   clampTimerTimeoutMs,
   resolveIntegerOption as normalizeIntegerOption,
@@ -17,6 +18,7 @@ import {
   readDiscordMessage,
   readRetryAfter,
 } from "./rest-errors.js";
+import { isDiscordSynchronousFetch, type DiscordPhysicalHandoff } from "./rest-physical-handoff.js";
 import { appendQuery, createRouteKey } from "./rest-routes.js";
 import {
   RestScheduler,
@@ -67,6 +69,17 @@ export type RequestData = {
   headers?: Record<string, string>;
 };
 
+export type RequestOptions = {
+  /** Private host capability, limited to the fixed guild media-filter PATCH. */
+  physicalHandoff?: DiscordPhysicalHandoff;
+};
+
+type RequestParams = {
+  data?: RequestData;
+  query?: RequestQuery;
+  physicalHandoff?: DiscordPhysicalHandoff;
+};
+
 type QueuedRequest = {
   method: string;
   path: string;
@@ -80,7 +93,67 @@ type QueuedRequest = {
 type RequestDispatchData = {
   data?: RequestData;
   assertCurrent?: () => void;
+  physicalHandoff?: DiscordPhysicalHandoff;
 };
+
+const physicalHandoffLogger = createSubsystemLogger("discord/rest");
+
+function logPhysicalHandoff(physicalHandoffCount: number): void {
+  try {
+    physicalHandoffLogger.debug("Discord fixed media-filter transport returned", {
+      action: "guild-media-filter-set-all-members",
+      schedulerPolicy: "single-physical-patch",
+      physicalHandoffCount,
+    });
+  } catch {
+    // Diagnostics must never replace the dispatch or settlement outcome.
+  }
+}
+
+function captureFixedPhysicalHandoff(
+  method: string,
+  path: string,
+  params: RequestParams,
+): DiscordPhysicalHandoff | undefined {
+  const permit = params.physicalHandoff;
+  if (permit === undefined) {
+    return undefined;
+  }
+  const body = params.data?.body;
+  if (
+    method !== "PATCH" ||
+    !/^\/guilds\/[1-9]\d{0,19}$/.test(path) ||
+    path.trim() !== path ||
+    BigInt(path.slice("/guilds/".length)) > 18446744073709551615n ||
+    params.query !== undefined ||
+    !params.data ||
+    Reflect.ownKeys(params.data).some((key) => key !== "body") ||
+    !body ||
+    typeof body !== "object" ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(body)) ||
+    Reflect.ownKeys(body).length !== 1 ||
+    Object.getOwnPropertyDescriptor(body, "explicit_content_filter")?.value !== 2 ||
+    !permit ||
+    typeof permit.assertCurrent !== "function" ||
+    typeof permit.consumePhysicalHandoff !== "function"
+  ) {
+    throw new Error("invalid_physical_handoff_request");
+  }
+  const assertCurrent = permit.assertCurrent.bind(permit);
+  const consume = permit.consumePhysicalHandoff.bind(permit);
+  let consumed = false;
+  return {
+    assertCurrent,
+    consumePhysicalHandoff(request) {
+      assertCurrent();
+      if (consumed) {
+        throw new Error("physical_attempt_already_consumed");
+      }
+      consumed = true;
+      consume(request);
+    },
+  };
+}
 
 const defaultOptions = {
   tokenHeader: "Bot" as const,
@@ -164,11 +237,13 @@ export class RequestClient {
   readonly options: NormalizedRequestClientOptions;
   protected token: string;
   protected customFetch: DiscordEndpointRuntime["fetch"] | undefined;
+  private readonly endpointFetch: DiscordEndpointRuntime["fetch"] | undefined;
   protected requestControllers = new Set<AbortController>();
   private scheduler: RestScheduler<RequestDispatchData>;
 
   constructor(token: string, options?: RequestClientOptions) {
     const endpoint = getDiscordEndpointRuntime();
+    this.endpointFetch = endpoint?.fetch;
     const resolvedOptions = endpoint
       ? {
           ...options,
@@ -200,7 +275,11 @@ export class RequestClient {
         await this.executeRequest(
           request.method,
           request.path,
-          { data: request.data?.data, query: request.query },
+          {
+            data: request.data?.data,
+            query: request.query,
+            physicalHandoff: request.data?.physicalHandoff,
+          },
           request.routeKey,
           request.data?.assertCurrent,
         ),
@@ -215,8 +294,17 @@ export class RequestClient {
     return await this.request("POST", path, { data, query });
   }
 
-  async patch(path: string, data?: RequestData, query?: QueuedRequest["query"]): Promise<unknown> {
-    return await this.request("PATCH", path, { data, query });
+  async patch(
+    path: string,
+    data?: RequestData,
+    query?: QueuedRequest["query"],
+    options?: RequestOptions,
+  ): Promise<unknown> {
+    return await this.request("PATCH", path, {
+      data,
+      query,
+      physicalHandoff: options?.physicalHandoff,
+    });
   }
 
   async put(path: string, data?: RequestData, query?: QueuedRequest["query"]): Promise<unknown> {
@@ -227,39 +315,46 @@ export class RequestClient {
     return await this.request("DELETE", path, { data, query });
   }
 
-  protected async request(
-    method: string,
-    path: string,
-    params: { data?: RequestData; query?: QueuedRequest["query"] },
-  ): Promise<unknown> {
+  protected async request(method: string, path: string, params: RequestParams): Promise<unknown> {
+    const physicalHandoff = captureFixedPhysicalHandoff(method, path, params);
+    if (physicalHandoff) {
+      this.assertPhysicalHandoffTransport();
+    }
+    // Caller-owned objects must not change the admitted body while queued.
+    const requestParams: RequestParams = physicalHandoff
+      ? { data: { body: { explicit_content_filter: 2 } }, physicalHandoff }
+      : params;
     const routeKey = createRouteKey(method, path);
     // A shared scheduler can drain under another caller's async context. Capture
     // both host action and read authority before queueing or rate-limit retries.
     const assertActionAuthority = captureDiscordRequestAuthority();
     const assertReadAuthority = captureChannelReadAuthority();
-    const assertCurrent = assertActionAuthority
-      ? () => {
-          assertActionAuthority();
-          assertReadAuthority?.();
-        }
-      : assertReadAuthority;
+    const assertCurrent =
+      assertActionAuthority || physicalHandoff
+        ? () => {
+            assertActionAuthority?.();
+            assertReadAuthority?.();
+            physicalHandoff?.assertCurrent();
+          }
+        : assertReadAuthority;
     assertCurrent?.();
     if (!this.options.queueRequests) {
-      return await this.executeRequest(method, path, params, routeKey, assertCurrent);
+      return await this.executeRequest(method, path, requestParams, routeKey, assertCurrent);
     }
     return await this.scheduler.enqueue({
       method,
       path,
       priority: getRequestPriority(method, path),
-      query: params.query,
-      data: { data: params.data, assertCurrent },
+      query: requestParams.query,
+      data: { data: requestParams.data, assertCurrent, physicalHandoff },
+      ...(physicalHandoff ? { rateLimitRetryPolicy: "never" as const } : {}),
     });
   }
 
   protected async executeRequest(
     method: string,
     path: string,
-    params: { data?: RequestData; query?: QueuedRequest["query"] },
+    params: RequestParams,
     routeKey = createRouteKey(method, path),
     assertCurrent?: () => void,
   ): Promise<unknown> {
@@ -278,13 +373,54 @@ export class RequestClient {
       ? AbortSignal.any([this.options.signal, controller.signal])
       : controller.signal;
     this.requestControllers.add(controller);
+    let physicalHandoffCount = 0;
     try {
       assertCurrent?.();
-      const init = { method, headers, body, signal };
-      const response =
-        this.customFetch && assertCurrent
-          ? await this.customFetch(url, init, assertCurrent)
-          : await (this.customFetch ?? fetch)(url, init);
+      const init: RequestInit = {
+        method,
+        headers,
+        body,
+        signal,
+        ...(params.physicalHandoff ? { redirect: "error" as const, duplex: "half" as const } : {}),
+      };
+      let response: Response;
+      if (params.physicalHandoff) {
+        this.assertPhysicalHandoffTransport();
+        if (method !== "PATCH" || typeof body !== "string") {
+          throw new Error("invalid_physical_handoff_request");
+        }
+        const bytes = new TextEncoder().encode(body);
+        headers.set("Content-Length", String(bytes.byteLength));
+        // A replayable string lets Undici repeat a PATCH on HTTP 421 internally.
+        // Keep this fixed write one-shot even beneath the REST scheduler.
+        init.body = new ReadableStream<Uint8Array>({
+          start(stream) {
+            stream.enqueue(bytes);
+            stream.close();
+          },
+        });
+        const physicalHandoff = params.physicalHandoff;
+        const beforeRequest = () => {
+          assertCurrent?.();
+          signal.throwIfAborted();
+          physicalHandoff.consumePhysicalHandoff({ method, path, body });
+          physicalHandoffCount = 1;
+        };
+        const selectedFetch = this.customFetch ?? fetch;
+        if (selectedFetch === this.endpointFetch) {
+          // The endpoint owner calls this after asynchronous SSRF preparation.
+          response = await selectedFetch(url, init, beforeRequest);
+        } else {
+          // Direct fetch and the registered SDK proxy have synchronous handoff.
+          beforeRequest();
+          response = await selectedFetch(url, init);
+        }
+      } else {
+        response =
+          this.customFetch && assertCurrent
+            ? await this.customFetch(url, init, assertCurrent)
+            : await (this.customFetch ?? fetch)(url, init);
+      }
       const text = await readResponseBodyText(response, this.options.timeout ?? 15_000);
       const parsed = coerceResponseBody(text);
       this.scheduler.recordResponse(routeKey, path, response, parsed);
@@ -313,6 +449,9 @@ export class RequestClient {
       }
       throw new Error(`Discord request failed: ${inspect(error)}`, { cause: error });
     } finally {
+      if (params.physicalHandoff) {
+        logPhysicalHandoff(physicalHandoffCount);
+      }
       clearTimeout(timeout);
       this.requestControllers.delete(controller);
     }
@@ -320,6 +459,16 @@ export class RequestClient {
 
   clearQueue(): void {
     this.scheduler.clearQueue();
+  }
+
+  private assertPhysicalHandoffTransport(): void {
+    if (
+      this.customFetch &&
+      this.customFetch !== this.endpointFetch &&
+      !isDiscordSynchronousFetch(this.customFetch)
+    ) {
+      throw new Error("unsupported_transport");
+    }
   }
 
   get queueSize(): number {

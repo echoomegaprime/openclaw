@@ -135,3 +135,17 @@ export function isSqliteWorkerError(
     return false;
   }
 }
+
+/** Forbid replay after a canonical unknown outcome, including its retained cleanup aggregate.
+ * This is separate from retry eligibility: aggregates never become retryable.
+ */
+export function hasUnknownSqliteWorkerOutcome(error: unknown): boolean {
+  try {
+    return (
+      error instanceof Error &&
+      Object.getOwnPropertyDescriptor(error, retainedWorkerErrorCode)?.value === "outcome-unknown"
+    );
+  } catch {
+    return false;
+  }
+}

@@ -14,6 +14,7 @@ import {
   openOpenClawAgentDatabase,
   closeOpenClawAgentDatabasesForTest,
 } from "./openclaw-agent-db.js";
+import * as executionCleanup from "./openclaw-agent-execution-cleanup.js";
 import {
   openOpenClawAgentSqliteWorkerStore,
   type OpenClawAgentSqliteWorkerStore,
@@ -40,11 +41,14 @@ afterEach(async () => {
   await closeOpenClawAgentDatabasesAsync(root);
   closeOpenClawAgentDatabasesForTest();
 });
-async function setup(input?: Parameters<typeof bindSqliteWorkerBackend>[0]) {
-  const { db } = openOpenClawAgentDatabase(options);
+async function setup(
+  input?: Parameters<typeof bindSqliteWorkerBackend>[0],
+  targetOptions = options,
+) {
+  const { db } = openOpenClawAgentDatabase(targetOptions);
   db.exec("CREATE TABLE worker_proof (value TEXT NOT NULL)");
   const worker = await openOpenClawAgentSqliteWorkerStore<AgentWorkerFixtureOperations>(
-    options,
+    targetOptions,
     db,
     {
       moduleUrl: resolveRuntimeWorkerUrl(agentWorkerStoreFixtureEntrypoint),
@@ -339,6 +343,146 @@ describe("pooled agent publication owner", () => {
         release.resolve();
         await Promise.allSettled(second ? [first, second] : [first]);
         interception.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    ["same owner", true],
+    ["same owner", false],
+    ["sibling", true],
+    ["sibling", false],
+  ] as const)(
+    "recovers %s publication after idle cleanup with caller current=%s",
+    async (follower, remainsCurrent) => {
+      const first = await setup();
+      const second = await setup(undefined, {
+        agentId: "sibling",
+        path: path.join(root, "sibling.sqlite"),
+      });
+      const shared = openOpenClawStateDatabase();
+      const readLeases = () =>
+        shared.db
+          .prepare("SELECT lease_id FROM agent_database_leases WHERE path = ? ORDER BY lease_id")
+          .all(options.path);
+      const hostLeases = readLeases();
+      await first.worker.run(
+        (scope) => scope.execute({ type: "append", input: { value: "completed first" } }),
+        () => undefined,
+      );
+      const leaseId = readLeases().find(
+        (row) => !hostLeases.some((host) => host.lease_id === row.lease_id),
+      )?.lease_id;
+      if (typeof leaseId !== "string") {
+        throw new Error("Expected the idle owner's retained lease identifier");
+      }
+      const literal = shared.db.prepare("SELECT quote(?) AS literal").get(leaseId)?.literal;
+      if (typeof literal !== "string") {
+        throw new Error("Expected the idle owner's escaped lease identifier");
+      }
+      shared.db.exec(`CREATE TRIGGER refuse_idle_lease_cleanup
+      BEFORE DELETE ON agent_database_leases WHEN OLD.lease_id = ${literal}
+      BEGIN SELECT RAISE(ABORT, 'controlled idle lease cleanup failure'); END`);
+      const publishSecond = () =>
+        second.worker.run(
+          (scope) => scope.execute({ type: "append", input: { value: "new second" } }),
+          () => undefined,
+        );
+      const resumeCleanup = createDeferredCore();
+      const pending: Promise<unknown>[] = [];
+      try {
+        await expect(publishSecond()).rejects.toThrow();
+        expect(second.db.prepare("SELECT value FROM worker_proof").all()).toEqual([]);
+        expect(readLeases().some((row) => row.lease_id === leaseId)).toBe(true);
+        await expect(publishSecond()).rejects.toThrow();
+        expect(second.db.prepare("SELECT value FROM worker_proof").all()).toEqual([]);
+        expect(readLeases().some((row) => row.lease_id === leaseId)).toBe(true);
+        shared.db.exec("DROP TRIGGER refuse_idle_lease_cleanup");
+        const cleanupEntered = createDeferredCore();
+        const cleanup = executionCleanup.cleanupRetiredAgentDatabaseLease;
+        let cleanupAttempts = 0;
+        let retainedCleanup: Parameters<typeof cleanup>[0] | undefined;
+        vi.spyOn(executionCleanup, "cleanupRetiredAgentDatabaseLease").mockImplementation(
+          async (params) => {
+            if (params.lease.leaseId === leaseId) {
+              retainedCleanup = params;
+              cleanupAttempts++;
+              cleanupEntered.resolve();
+              await resumeCleanup.promise;
+            }
+            return cleanup(params);
+          },
+        );
+        const recovered = follower === "same owner" ? first : second;
+        const companion = follower === "same owner" ? second : first;
+        let current = true;
+        const recovering = recovered.worker.run(
+          (scope) => scope.execute({ type: "append", input: { value: "recovered" } }),
+          () => {
+            if (!current) {
+              throw new Error("caller revoked during retained cleanup");
+            }
+          },
+        );
+        pending.push(recovering);
+        void recovering.catch(() => undefined);
+        await Promise.race([cleanupEntered.promise, recovering]);
+        const concurrent = companion.worker.run(
+          (scope) => scope.execute({ type: "append", input: { value: "concurrent" } }),
+          () => undefined,
+        );
+        pending.push(concurrent);
+        void concurrent.catch(() => undefined);
+        await nextTurn();
+        expect(first.db.prepare("SELECT value FROM worker_proof").all()).toEqual([
+          { value: "completed first" },
+        ]);
+        expect(second.db.prepare("SELECT value FROM worker_proof").all()).toEqual([]);
+        expect(readLeases().some((row) => row.lease_id === leaseId)).toBe(true);
+        expect(cleanupAttempts).toBe(1);
+        current = remainsCurrent;
+        resumeCleanup.resolve();
+        if (remainsCurrent) {
+          await expect(recovering).resolves.toBeGreaterThan(0);
+        } else {
+          await expect(recovering).rejects.toThrow("caller revoked during retained cleanup");
+        }
+        await expect(concurrent).resolves.toBeGreaterThan(0);
+        expect(first.db.prepare("SELECT value FROM worker_proof").all()).toEqual([
+          { value: "completed first" },
+          ...(follower === "same owner"
+            ? remainsCurrent
+              ? [{ value: "recovered" }]
+              : []
+            : [{ value: "concurrent" }]),
+        ]);
+        expect(second.db.prepare("SELECT value FROM worker_proof").all()).toEqual(
+          follower === "sibling"
+            ? remainsCurrent
+              ? [{ value: "recovered" }]
+              : []
+            : [{ value: "concurrent" }],
+        );
+        expect(readLeases().some((row) => row.lease_id === leaseId)).toBe(false);
+        for (const host of hostLeases) {
+          expect(readLeases()).toContainEqual(host);
+        }
+        if (!retainedCleanup) {
+          throw new Error("Expected the original native owner's retained cleanup");
+        }
+        const successorLeases = shared.db
+          .prepare("SELECT * FROM agent_database_leases ORDER BY lease_id")
+          .all();
+        await expect(cleanup(retainedCleanup)).rejects.toThrow(
+          "Agent cleanup no longer owns its original execution reference",
+        );
+        expect(
+          shared.db.prepare("SELECT * FROM agent_database_leases ORDER BY lease_id").all(),
+        ).toEqual(successorLeases);
+      } finally {
+        resumeCleanup.resolve();
+        await Promise.allSettled(pending);
+        shared.db.exec("DROP TRIGGER IF EXISTS refuse_idle_lease_cleanup");
       }
     },
   );
